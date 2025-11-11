@@ -118,7 +118,11 @@ Production-ready Python packages for ML workflows:
 
 ## 📫 Contact
 
-For inquiries about this portfolio or collaboration opportunities, please reach out via GitHub.
+For inquiries about this portfolio or collaboration opportunities:
+
+- **LinkedIn**: [linkedin.com/in/jomin-kim-643870126](https://www.linkedin.com/in/jomin-kim-643870126)
+- **GitHub**: [@PrizmCaptCore](https://github.com/PrizmCaptCore)
+- **Email**: lumia82015@live.com
 
 ---
 
