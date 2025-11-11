@@ -94,10 +94,14 @@ Production-ready Python packages for ML workflows:
 - **GitOps**: Declarative infrastructure
 
 ### Python Development
-- **Frameworks**: FastAPI, Flask, asyncio
-- **ML/Data**: pandas, numpy, scikit-learn
-- **Testing**: pytest, unittest, mocking
-- **Packaging**: setuptools, pyproject.toml, pip
+- **Frameworks**: FastAPI, asyncio, aiohttp
+- **ML/Data**: PyTorch, TorchVision, pandas, numpy, scikit-learn, nibabel (medical imaging)
+- **Deep Learning**: PyTorch model training/inference, MONAI (medical imaging AI)
+- **Data Processing**: Pydicom (DICOM), SimpleITK, medical image preprocessing
+- **API Integration**: Google Cloud Healthcare API, FHIR clients, boto3 (AWS SDK)
+- **Testing**: pytest, unittest, pytest-asyncio, mocking
+- **Packaging**: Monorepo architecture, setuptools, pyproject.toml, namespace packages
+- **Code Quality**: Black, isort, mypy, ruff, pre-commit hooks
 
 ### Healthcare IT
 - **Standards**: FHIR R4, DICOM, HL7
