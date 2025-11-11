@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fhir-client"
+version = "2.1.0"
+description = "FHIR R4 client for healthcare data integration"
+requires-python = ">=3.9"
+dependencies = [
+    "aiohttp>=3.8.0",
+    "google-cloud-healthcare>=1.11.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "black", "mypy"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
