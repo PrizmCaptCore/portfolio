@@ -130,6 +130,29 @@ For inquiries about this portfolio or collaboration opportunities:
 
 ---
 
+## 🔒 Additional Materials Available on Request
+
+This portfolio showcases production-ready code samples and architecture. Additional materials available upon request for serious inquiries:
+
+### Available Documentation:
+- **Detailed AWS Architecture**: Complete dual-VPC Terraform configurations with security group implementations
+- **Production MLOps Pipelines**: Full ClearML pipeline code with Spot instance autoscaling
+- **Healthcare Integration**: FHIR R4 and PACS/DICOM client implementations
+- **Kubernetes Manifests**: Complete GitOps setup for MLOps infrastructure
+- **Python Package Source**: Full source code for 16+ production ML packages
+- **Architecture Decision Records (ADRs)**: Design decisions and trade-offs
+- **Performance Benchmarks**: Cost optimization results and metrics
+
+### How to Request:
+Please contact via email or LinkedIn with:
+1. Brief introduction of your organization
+2. Specific materials you're interested in
+3. Intended use case (hiring evaluation, collaboration, etc.)
+
+**Note**: Some implementations contain proprietary architectural patterns and are shared selectively to maintain competitive advantage while demonstrating technical capability.
+
+---
+
 ## 📝 License
 
 This portfolio contains anonymized and generalized versions of production code for demonstration purposes. All proprietary business logic has been removed or replaced with generic implementations.
