@@ -1,0 +1,47 @@
+FROM ubuntu:22.04
+
+LABEL maintainer="MLOps Team"
+LABEL description="SLURM Controller Node for HPC Cluster"
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    slurm-wlm \
+    slurm-wlm-basic-plugins \
+    munge \
+    supervisor \
+    vim \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create SLURM directories
+RUN mkdir -p /var/spool/slurm/ctld \
+    /var/spool/slurm/d \
+    /var/log/slurm \
+    /etc/slurm
+
+# Create munge directory
+RUN mkdir -p /etc/munge /var/lib/munge /var/log/munge /var/run/munge
+
+# Set permissions
+RUN chown -R slurm:slurm /var/spool/slurm /var/log/slurm
+RUN chown -R munge:munge /etc/munge /var/lib/munge /var/log/munge /var/run/munge
+RUN chmod 0700 /etc/munge
+RUN chmod 0711 /var/lib/munge
+RUN chmod 0700 /var/log/munge
+RUN chmod 0755 /var/run/munge
+
+# Copy SLURM configuration
+COPY slurm.conf /etc/slurm/slurm.conf
+COPY cgroup.conf /etc/slurm/cgroup.conf
+
+# Copy supervisord configuration
+COPY supervisord-ctld.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Expose SLURM ports
+EXPOSE 6817 6818 6819
+
+# Start supervisord
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  slurmctld:
+    build:
+      context: .
+      dockerfile: Dockerfile.slurmctld
+    image: slurm-controller:latest
+    container_name: slurmctld
+    hostname: slurmctld
+    networks:
+      - slurm-network
+    volumes:
+      - munge-key:/etc/munge
+      - slurm-state:/var/spool/slurm
+      - slurm-logs:/var/log/slurm
+    ports:
+      - "6817:6817"
+      - "6818:6818"
+      - "6819:6819"
+    environment:
+      - SLURM_CLUSTER_NAME=mlops-cluster
+    restart: unless-stopped
+
+  slurmd-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.slurmd
+    image: slurm-compute:latest
+    container_name: compute1
+    hostname: compute1
+    networks:
+      - slurm-network
+    volumes:
+      - munge-key:/etc/munge
+      - slurm-logs:/var/log/slurm
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - SLURM_NODENAME=compute1
+    depends_on:
+      - slurmctld
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 32G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  slurmd-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.slurmd
+    image: slurm-compute:latest
+    container_name: compute2
+    hostname: compute2
+    networks:
+      - slurm-network
+    volumes:
+      - munge-key:/etc/munge
+      - slurm-logs:/var/log/slurm
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - SLURM_NODENAME=compute2
+    depends_on:
+      - slurmctld
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 32G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  slurm-network:
+    driver: bridge
+
+volumes:
+  munge-key:
+  slurm-state:
+  slurm-logs:

@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: mlops
+  labels:
+    app: postgres
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: init-scripts
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: init-scripts
+        configMap:
+          name: postgres-init-scripts
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: gp3
+      resources:
+        requests:
+          storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: mlops
+  labels:
+    app: postgres
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for StatefulSet
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+  selector:
+    app: postgres
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: mlops
+data:
+  init-databases.sql: |
+    -- Create databases for different services
+    CREATE DATABASE mlflow;
+    CREATE DATABASE airflow;
+    CREATE DATABASE clearml;
+
+    -- Create users
+    CREATE USER mlflow WITH PASSWORD 'mlflow_password';
+    CREATE USER airflow WITH PASSWORD 'airflow_password';
+    CREATE USER clearml WITH PASSWORD 'clearml_password';
+
+    -- Grant privileges
+    GRANT ALL PRIVILEGES ON DATABASE mlflow TO mlflow;
+    GRANT ALL PRIVILEGES ON DATABASE airflow TO airflow;
+    GRANT ALL PRIVILEGES ON DATABASE clearml TO clearml;
+
+    -- Setup extensions
+    \c mlflow;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c airflow;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c clearml;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

@@ -1,0 +1,57 @@
+FROM ubuntu:22.04
+
+LABEL maintainer="MLOps Team"
+LABEL description="SLURM Compute Node with Docker support"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies including Docker
+RUN apt-get update && apt-get install -y \
+    slurm-wlm \
+    slurm-wlm-basic-plugins \
+    munge \
+    supervisor \
+    docker.io \
+    nvidia-docker2 \
+    vim \
+    wget \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python ML libraries
+RUN pip3 install --no-cache-dir \
+    torch \
+    torchvision \
+    numpy \
+    pandas \
+    scikit-learn
+
+# Create SLURM directories
+RUN mkdir -p /var/spool/slurm/d \
+    /var/log/slurm \
+    /etc/slurm
+
+# Create munge directory
+RUN mkdir -p /etc/munge /var/lib/munge /var/log/munge /var/run/munge
+
+# Set permissions
+RUN chown -R slurm:slurm /var/spool/slurm /var/log/slurm
+RUN chown -R munge:munge /etc/munge /var/lib/munge /var/log/munge /var/run/munge
+RUN chmod 0700 /etc/munge
+RUN chmod 0711 /var/lib/munge
+RUN chmod 0700 /var/log/munge
+RUN chmod 0755 /var/run/munge
+
+# Copy SLURM configuration
+COPY slurm.conf /etc/slurm/slurm.conf
+COPY cgroup.conf /etc/slurm/cgroup.conf
+
+# Copy supervisord configuration
+COPY supervisord-slurmd.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Expose SLURM compute node port
+EXPOSE 6818
+
+# Start supervisord
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

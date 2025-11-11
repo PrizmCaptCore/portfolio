@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-server
+  namespace: mlops
+  labels:
+    app: mlflow
+    component: tracking-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mlflow
+      component: tracking-server
+  template:
+    metadata:
+      labels:
+        app: mlflow
+        component: tracking-server
+    spec:
+      containers:
+      - name: mlflow
+        image: mlflow/mlflow:2.8.0
+        ports:
+        - containerPort: 5000
+          name: http
+          protocol: TCP
+        env:
+        - name: MLFLOW_S3_ENDPOINT_URL
+          value: "https://s3.amazonaws.com"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: aws-secret-access-key
+        - name: MLFLOW_BACKEND_STORE_URI
+          value: "postgresql://mlflow:$(POSTGRES_PASSWORD)@postgres-service:5432/mlflow"
+        - name: MLFLOW_DEFAULT_ARTIFACT_ROOT
+          value: "s3://mlflow-artifacts/"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: password
+        command:
+        - mlflow
+        - server
+        - --host
+        - "0.0.0.0"
+        - --port
+        - "5000"
+        - --backend-store-uri
+        - "$(MLFLOW_BACKEND_STORE_URI)"
+        - --default-artifact-root
+        - "$(MLFLOW_DEFAULT_ARTIFACT_ROOT)"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 15
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow-service
+  namespace: mlops
+  labels:
+    app: mlflow
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 5000
+    protocol: TCP
+    name: http
+  selector:
+    app: mlflow
+    component: tracking-server
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mlflow-ingress
+  namespace: mlops
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - mlflow.mlops.example.com
+    secretName: mlflow-tls
+  rules:
+  - host: mlflow.mlops.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: mlflow-service
+            port:
+              number: 80
