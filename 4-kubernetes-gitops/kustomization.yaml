@@ -1,0 +1,67 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mlops
+
+resources:
+  - namespace.yaml
+  - postgres-statefulset.yaml
+  - redis-deployment.yaml
+  - mlflow-deployment.yaml
+  - airflow-deployment.yaml
+  - clearml-deployment.yaml
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: mlops-platform
+
+# Common annotations
+commonAnnotations:
+  description: "MLOps platform infrastructure"
+  team: "mlops-team"
+
+# Images to use (can be overridden per environment)
+images:
+  - name: postgres
+    newTag: 15-alpine
+  - name: redis
+    newTag: 7-alpine
+  - name: apache/airflow
+    newTag: 2.7.3-python3.9
+
+# ConfigMap generator
+configMapGenerator:
+  - name: mlops-config
+    literals:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - TIMEZONE=UTC
+
+# Secret generator (reference external secrets in production)
+secretGenerator:
+  - name: common-secrets
+    envs:
+      - secrets.env
+
+# Patches for environment-specific configurations
+patches:
+  - target:
+      kind: Deployment
+      labelSelector: "app=mlflow"
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+  - target:
+      kind: Deployment
+      labelSelector: "app=airflow,component=worker"
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+
+# Namespace-specific configurations
+configurations:
+  - kustomizeconfig.yaml

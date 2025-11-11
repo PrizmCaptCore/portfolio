@@ -1,0 +1,242 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clearml-apiserver
+  namespace: mlops
+  labels:
+    app: clearml
+    component: apiserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clearml
+      component: apiserver
+  template:
+    metadata:
+      labels:
+        app: clearml
+        component: apiserver
+    spec:
+      containers:
+      - name: apiserver
+        image: allegroai/clearml:latest
+        ports:
+        - containerPort: 8008
+          name: http
+        env:
+        - name: CLEARML_SERVER_DEPLOYMENT_TYPE
+          value: "kubernetes"
+        - name: CLEARML__apiserver__mongo__host
+          value: "mongo-service"
+        - name: CLEARML__apiserver__mongo__port
+          value: "27017"
+        - name: CLEARML__apiserver__elasticsearch__host
+          value: "elasticsearch-service"
+        - name: CLEARML__apiserver__elasticsearch__port
+          value: "9200"
+        - name: CLEARML__apiserver__redis__host
+          value: "redis-service"
+        - name: CLEARML__apiserver__redis__port
+          value: "6379"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8008
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8008
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clearml-webserver
+  namespace: mlops
+  labels:
+    app: clearml
+    component: webserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clearml
+      component: webserver
+  template:
+    metadata:
+      labels:
+        app: clearml
+        component: webserver
+    spec:
+      containers:
+      - name: webserver
+        image: allegroai/clearml:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: CLEARML_SERVER_DEPLOYMENT_TYPE
+          value: "kubernetes"
+        - name: CLEARML__apiserver__host
+          value: "clearml-apiserver-service"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clearml-fileserver
+  namespace: mlops
+  labels:
+    app: clearml
+    component: fileserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clearml
+      component: fileserver
+  template:
+    metadata:
+      labels:
+        app: clearml
+        component: fileserver
+    spec:
+      containers:
+      - name: fileserver
+        image: allegroai/clearml:latest
+        ports:
+        - containerPort: 8081
+          name: http
+        volumeMounts:
+        - name: clearml-data
+          mountPath: /mnt/fileserver
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+      volumes:
+      - name: clearml-data
+        persistentVolumeClaim:
+          claimName: clearml-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clearml-apiserver-service
+  namespace: mlops
+  labels:
+    app: clearml
+    component: apiserver
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8008
+    targetPort: 8008
+    protocol: TCP
+    name: http
+  selector:
+    app: clearml
+    component: apiserver
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clearml-webserver-service
+  namespace: mlops
+  labels:
+    app: clearml
+    component: webserver
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: clearml
+    component: webserver
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clearml-fileserver-service
+  namespace: mlops
+  labels:
+    app: clearml
+    component: fileserver
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: 8081
+    protocol: TCP
+    name: http
+  selector:
+    app: clearml
+    component: fileserver
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clearml-data-pvc
+  namespace: mlops
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: gp3
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: clearml-ingress
+  namespace: mlops
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - clearml.mlops.example.com
+    secretName: clearml-tls
+  rules:
+  - host: clearml.mlops.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: clearml-webserver-service
+            port:
+              number: 80
