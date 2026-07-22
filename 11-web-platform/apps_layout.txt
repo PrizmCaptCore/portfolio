@@ -1,0 +1,180 @@
+config/                         # 프로젝트 설정 (Django + DRF)
+├── settings/                   # 환경별 분리 (base / dev / prod)
+├── api_urls.py                 # /api/v1 라우트 집약 (API 표면)
+├── urls.py                     # 레거시 server-rendered 라우트
+├── celery.py                   # Celery 앱
+├── schedules.py                # beat 스케줄
+└── asgi.py / wsgi.py           # ASGI(WebSocket) / WSGI
+
+apps/                           # 도메인별 Django 앱 (bounded context)
+├── accounts/
+│   ├── models.py
+│   ├── managers.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── serializers.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   ├── forms.py
+│   ├── adapter.py
+│   ├── tests.py
+│   ├── management/commands/   # 운영 커맨드 (프로비저닝 등)
+│   └── migrations/
+├── ai_gateway/
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── views.py
+├── ai_tutor/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   ├── views.py
+│   ├── adapter.py
+│   ├── tasks.py
+│   ├── tests.py
+│   ├── management/commands/   # 운영 커맨드 (프로비저닝 등)
+│   └── migrations/
+├── assessment/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   ├── views.py
+│   ├── tests.py
+│   └── migrations/
+├── billing/
+│   └── migrations/
+├── chat/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── views.py
+│   ├── tests.py
+│   └── migrations/
+├── conversation_log/
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   ├── views.py
+│   ├── tests.py
+├── core/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── views.py
+│   ├── tests.py
+│   ├── architecture.py
+│   └── migrations/
+├── desktop_auth/
+│   └── migrations/
+├── devices/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── views.py
+│   ├── tests.py
+│   └── migrations/
+├── integrations/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   └── migrations/
+├── meetings/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── serializers.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   └── migrations/
+├── notifications/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── views.py
+│   ├── tests.py
+│   └── migrations/
+├── pages/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   ├── views.py
+│   ├── tests.py
+│   └── migrations/
+├── payments/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   ├── tasks.py
+│   └── migrations/
+├── practice/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── serializers.py
+│   ├── api_urls.py
+│   ├── views.py
+│   ├── tasks.py
+│   ├── tests.py
+│   ├── management/commands/   # 운영 커맨드 (프로비저닝 등)
+│   └── migrations/
+├── presentation_coach/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── forms.py
+│   ├── tasks.py
+│   ├── tests.py
+│   ├── management/commands/   # 운영 커맨드 (프로비저닝 등)
+│   └── migrations/
+├── rag/
+│   ├── models.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   ├── tasks.py
+│   └── migrations/
+├── speech/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── views.py
+│   ├── tests.py
+│   └── migrations/
+├── teams/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── serializers.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   ├── views.py
+│   ├── forms.py
+│   ├── tests.py
+│   └── migrations/
+├── trio_talk/
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── views.py
+│   ├── tests.py
+├── users/
+│   ├── models.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── api_urls.py
+│   ├── api_views.py
+│   ├── views.py
+│   ├── forms.py
+│   ├── tests.py
+│   └── migrations/

@@ -36,4 +36,18 @@
 **Technologies**: Django, Django REST Framework, Celery (+ beat), PostgreSQL, Redis,
 React / Vite, TailwindCSS, Docker Compose, AWS ECS, CloudFront, Nginx (reverse proxy / WebSocket upgrade)
 
-> 애플리케이션 소스는 비공개입니다. 본 문서는 아키텍처와 설계 의사결정을 정리한 것입니다.
+## 코드 스켈레톤 (이 폴더에 포함)
+
+전체 애플리케이션 소스는 비공개이며, 위 설계 의사결정을 뒷받침하는 **구조와 핵심 스니펫**만
+sanitize 해서 첨부했다. 각 파일이 위 4가지 결정과 1:1로 대응한다.
+
+| 파일 | 무엇 | 어느 결정 |
+|------|------|-----------|
+| [apps_layout.txt](apps_layout.txt) | 22개 도메인 앱 + `config/` 의 bounded-context 레이아웃 | 도메인 경계 / API 표면 분리 |
+| [architecture.py](architecture.py) | `render()` 사용 함수를 AST 로 탐지하는 fitness function | **아키텍처 테스트 = fitness function** |
+| [architecture_test.py](architecture_test.py) | API 표면이 템플릿을 렌더링하면 CI 실패 · 레거시 표면은 allowlist 로만 | **아키텍처 테스트 = fitness function** |
+| [bulk_create_b2b_users.py](bulk_create_b2b_users.py) | CSV 멱등 프로비저닝: dry-run · 팀 바인딩 · 재설정 링크 export · 잘못된 이메일 스킵 | **B2B 일괄 프로비저닝 커맨드** |
+| [docker-compose.local.yml](docker-compose.local.yml) | SPA·web·worker·beat·flower 를 별도 프로세스로 | **CDN/컴퓨트 분리 리허설** · **프로덕션과 같은 async** |
+
+> 위 파일들은 포트폴리오용으로 sanitize 되었습니다: 내부 endpoint/키/제품 특정 내용 제거.
+> 본 문서는 아키텍처와 설계 의사결정을 정리한 것입니다.

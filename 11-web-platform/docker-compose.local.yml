@@ -1,0 +1,125 @@
+# 로컬 스택: SPA 를 Django 와 별도 서빙해 CloudFront + ECS 프로덕션 분리를 리허설.
+# 포트폴리오용 발췌 — .env / 시크릿은 포함하지 않음.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    volumes:
+      - .:/app
+      - ./static:/app/static
+    ports:
+      - ${WEB_PORT:-8000}:8000
+    env_file:
+      - .env
+    environment:
+      - USE_S3_STORAGE=False
+      - PROCESS_TYPE=web
+      - SQS_QUEUE_NAME=${SQS_QUEUE_NAME:-django-default}
+      - REACT_FRONTEND_URL=${REACT_FRONTEND_URL:-http://localhost:5174}
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    depends_on:
+      - db
+      - redis
+
+  spa:
+    image: python:3.13-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    ports:
+      - ${SPA_PORT:-5173}:${SPA_PORT:-5173}
+    environment:
+      - SPA_FRONTEND_URL=${SPA_FRONTEND_URL:-http://localhost:5173}
+      - REACT_FRONTEND_URL=${REACT_FRONTEND_URL:-http://localhost:5174}
+      - SPA_PORT=${SPA_PORT:-5173}
+    command: ["python", "scripts/spa_dev_server.py"]
+
+  frontend:
+    image: node:22-bullseye
+    user: "0:0"
+    working_dir: /app/frontend
+    volumes:
+      - .:/app
+      - frontend_node_modules:/app/frontend/node_modules
+    ports:
+      - ${FRONTEND_PORT:-5174}:${FRONTEND_PORT:-5174}
+    environment:
+      - FRONTEND_PORT=${FRONTEND_PORT:-5174}
+      - REACT_FRONTEND_URL=${REACT_FRONTEND_URL:-http://localhost:5174}
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+      - VITE_BACKEND_BASE_URL=${VITE_BACKEND_BASE_URL:-http://localhost:8000}
+    command: ["sh", "-lc", "npm install && npm run build && chown -R ${LOCAL_UID:-1000}:${LOCAL_GID:-1000} /app/frontend/dist && npm run preview -- --host 0.0.0.0 --port ${FRONTEND_PORT:-5174}"]
+
+  db:
+    image: postgres:17
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - "POSTGRES_HOST_AUTH_METHOD=trust"
+
+  redis:
+    image: redis:latest
+    volumes:
+      - redis_data:/data
+    ports:
+      - 6379:6379
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    volumes:
+      - .:/app
+    ports: []
+    env_file:
+      - .env
+    environment:
+      - USE_S3_STORAGE=False
+      - PROCESS_TYPE=worker
+      - SQS_QUEUE_NAME=${SQS_QUEUE_NAME:-django-default}
+    command: ["celery", "-A", "config.celery:app", "worker", "-l", "info", "--concurrency=2", "-Q", "${SQS_QUEUE_NAME:-django-default}", "--hostname=worker@%h"]
+    depends_on:
+      - redis
+      - db
+
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.beat
+    volumes:
+      - .:/app
+    ports: []
+    env_file:
+      - .env
+    environment:
+      - USE_S3_STORAGE=False
+      - PROCESS_TYPE=beat
+      - SQS_QUEUE_NAME=${SQS_QUEUE_NAME:-django-default}
+    command: ["celery", "-A", "config.celery:app", "beat", "-l", "info", "--pidfile="]
+    depends_on:
+      - redis
+      - worker
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - PROCESS_TYPE=flower
+      - SQS_QUEUE_NAME=${SQS_QUEUE_NAME:-django-default}
+    command: ["celery", "-A", "config.celery:app", "flower", "--port=5555"]
+    ports:
+      - 5555:5555
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - worker
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:
+  frontend_node_modules:
