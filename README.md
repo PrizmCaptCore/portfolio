@@ -2,7 +2,7 @@
 
 Production-grade MLOps infrastructure and healthcare data pipelines showcasing AWS, Kubernetes, Terraform, and Python expertise.
 
-## 📊 Overview
+## Overview
 
 This portfolio demonstrates hands-on experience in:
 - **Cloud Infrastructure**: AWS (EC2, S3, IAM, VPC) with Terraform IaC
@@ -16,7 +16,7 @@ This portfolio demonstrates hands-on experience in:
 
 ---
 
-## 🚀 Projects
+## Projects
 
 ### 1. [AWS Terraform Infrastructure](./1-aws-terraform-iac/)
 Production-ready Terraform modules for AWS infrastructure:
@@ -75,7 +75,7 @@ Production-ready Python packages for ML workflows:
 
 ---
 
-## 💼 Technical Skills
+## Technical Skills
 
 ### Cloud & Infrastructure
 - **AWS**: EC2, S3, IAM, VPC, CloudWatch, Spot Instances
@@ -110,7 +110,7 @@ Production-ready Python packages for ML workflows:
 
 ---
 
-## 📈 Impact & Scale
+## Impact & Scale
 
 - **Infrastructure**: Managed AWS environments serving production ML workloads
 - **Cost Optimization**: Implemented Spot instance autoscaling reducing compute costs by ~60%
@@ -120,7 +120,7 @@ Production-ready Python packages for ML workflows:
 
 ---
 
-## 📫 Contact
+## Contact
 
 For inquiries about this portfolio or collaboration opportunities:
 
@@ -130,7 +130,7 @@ For inquiries about this portfolio or collaboration opportunities:
 
 ---
 
-## 🔒 Additional Materials Available on Request
+## Additional Materials Available on Request
 
 This portfolio showcases production-ready code samples and architecture. Additional materials available upon request for serious inquiries:
 
