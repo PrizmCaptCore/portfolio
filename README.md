@@ -46,14 +46,13 @@ End-to-end ML pipeline orchestration:
 
 **Technologies**: ClearML, Airflow, MLflow, Boto3, Kubernetes, Python
 
-### 3. [Healthcare Integration Platform](./3-healthcare-integration/)
-HIPAA-compliant healthcare system integration:
-- FHIR R4 client (GCP Healthcare API)
-- PACS/DICOM server integration
-- Domain-Driven Design architecture
-- Async workflow orchestration
+### 3. [Orthanc + openEHR 통합 · 가명화 브리지](./3-healthcare-integration/)
+DICOM(Orthanc)과 임상 기록(EHRbase/openEHR)을 하나의 비식별화 정책으로 잇는 통합 레포:
+- docker-compose 로 식별/가명 Orthanc 2대 + EHRbase + 브리지 기동, 식별 데이터는 source 밖으로 나가지 않음
+- HMAC 가명 + 환자별 날짜 시프트 + UID 재매핑을 DICOM(PS3.15 Basic Profile)과 openEHR composition 에 동일 적용
+- StableStudy 기반 멱등 파이프라인, 번인 텍스트 격리, 재식별 vault(가명화)와 vault 없음(익명화)을 같은 코드로
 
-**Technologies**: Python, FHIR R4, DICOM, GCP Healthcare API, Domain-Driven Design
+**Technologies**: Orthanc (DICOMweb), EHRbase (openEHR REST/AQL/FLAT), pydicom, httpx, Docker Compose
 
 ### 4. [Kubernetes GitOps](./4-kubernetes-gitops/)
 Production K8s manifests and deployments:

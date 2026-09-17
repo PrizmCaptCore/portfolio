@@ -1,0 +1,151 @@
+# Orthanc (DICOM) + EHRbase (openEHR) + de-identification bridge.
+#
+#   source Orthanc  --(pull new studies)-->  integration  --(pseudonymize, de-identify)-->  deid Orthanc
+#                                                  └------(imaging summary composition under pseudonymous EHR)--> EHRbase
+#
+# Two Orthanc instances on purpose: identified data never leaves `orthanc`; everything a downstream
+# consumer (research, ML, openEHR) can reach lives in `orthanc-deid`. Same image, separate databases.
+#
+#   cp .env.example .env && docker compose up -d
+#   Orthanc UI      http://localhost:8042   (orthanc / see .env)
+#   Orthanc de-id   http://localhost:8043
+#   EHRbase REST    http://localhost:8080/ehrbase/rest/openehr/v1   (basic auth, see .env)
+#   Swagger         http://localhost:8080/ehrbase/swagger-ui/index.html
+
+services:
+  # ---------------- Orthanc: identified source ----------------
+  orthanc:
+    image: orthancteam/orthanc:24.10.1
+    restart: unless-stopped
+    depends_on: [orthanc-db]
+    ports:
+      - "8042:8042"   # REST + web UI
+      - "4242:4242"   # DICOM (C-STORE / C-FIND / C-MOVE)
+    environment:
+      ORTHANC__NAME: "orthanc-src"
+      ORTHANC__DICOM_AET: "ORTHANC"
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REGISTERED_USERS: '{"${ORTHANC_USER}": "${ORTHANC_PASSWORD}"}'
+      ORTHANC__DICOM_WEB__ENABLE: "true"
+      ORTHANC__DICOM_WEB__ROOT: "/dicom-web/"
+      ORTHANC__POSTGRESQL__ENABLE_INDEX: "true"
+      ORTHANC__POSTGRESQL__ENABLE_STORAGE: "true"
+      ORTHANC__POSTGRESQL__HOST: "orthanc-db"
+      ORTHANC__POSTGRESQL__DATABASE: "orthanc"
+      ORTHANC__POSTGRESQL__USERNAME: "orthanc"
+      ORTHANC__POSTGRESQL__PASSWORD: "${ORTHANC_DB_PASSWORD}"
+      # Accept from any modality (lab setting). Lock down DicomModalities for a real site.
+      ORTHANC__DICOM_CHECK_MODALITY_HOST: "false"
+      ORTHANC__DICOM_ALWAYS_ALLOW_STORE: "true"
+      ORTHANC__STABLE_AGE: "30"      # seconds without new instances before a study counts as complete
+    volumes:
+      - ./orthanc/orthanc.json:/etc/orthanc/site.json:ro
+
+  orthanc-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orthanc
+      POSTGRES_USER: orthanc
+      POSTGRES_PASSWORD: "${ORTHANC_DB_PASSWORD}"
+    volumes:
+      - orthanc-db:/var/lib/postgresql/data
+
+  # ---------------- Orthanc: de-identified target ----------------
+  orthanc-deid:
+    image: orthancteam/orthanc:24.10.1
+    restart: unless-stopped
+    depends_on: [orthanc-deid-db]
+    ports:
+      - "8043:8042"
+      - "4243:4242"
+    environment:
+      ORTHANC__NAME: "orthanc-deid"
+      ORTHANC__DICOM_AET: "ORTHANCDEID"
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REGISTERED_USERS: '{"${ORTHANC_USER}": "${ORTHANC_PASSWORD}"}'
+      ORTHANC__DICOM_WEB__ENABLE: "true"
+      ORTHANC__POSTGRESQL__ENABLE_INDEX: "true"
+      ORTHANC__POSTGRESQL__ENABLE_STORAGE: "true"
+      ORTHANC__POSTGRESQL__HOST: "orthanc-deid-db"
+      ORTHANC__POSTGRESQL__DATABASE: "orthanc"
+      ORTHANC__POSTGRESQL__USERNAME: "orthanc"
+      ORTHANC__POSTGRESQL__PASSWORD: "${ORTHANC_DB_PASSWORD}"
+      # Nothing should be able to push identified data here by DICOM; only the bridge writes via REST.
+      ORTHANC__DICOM_ALWAYS_ALLOW_STORE: "false"
+
+  orthanc-deid-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orthanc
+      POSTGRES_USER: orthanc
+      POSTGRES_PASSWORD: "${ORTHANC_DB_PASSWORD}"
+    volumes:
+      - orthanc-deid-db:/var/lib/postgresql/data
+
+  # ---------------- EHRbase: openEHR CDR ----------------
+  ehrbase:
+    image: ehrbase/ehrbase:2.12.0
+    restart: unless-stopped
+    depends_on: [ehrbase-db]
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: "jdbc:postgresql://ehrbase-db:5432/ehrbase"
+      DB_USER: "ehrbase_restricted"
+      DB_PASS: "${EHRBASE_DB_PASSWORD}"
+      DB_USER_ADMIN: "ehrbase"
+      DB_PASS_ADMIN: "${EHRBASE_DB_ADMIN_PASSWORD}"
+      SECURITY_AUTHTYPE: "BASIC"
+      SECURITY_AUTHUSER: "${EHRBASE_USER}"
+      SECURITY_AUTHPASSWORD: "${EHRBASE_PASSWORD}"
+      SECURITY_AUTHADMINUSER: "${EHRBASE_ADMIN_USER}"
+      SECURITY_AUTHADMINPASSWORD: "${EHRBASE_ADMIN_PASSWORD}"
+      SYSTEM_NAME: "ehrbase.local"
+      ADMINAPI_ACTIVE: "true"
+      # Only pseudonymous subject ids are ever written here (see integration/deid). Keep validation strict.
+      VALIDATION_RELAXED: "false"
+
+  ehrbase-db:
+    image: ehrbase/ehrbase-v2-postgres:16.2
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${EHRBASE_DB_ADMIN_PASSWORD}"
+      EHRBASE_USER_ADMIN: "ehrbase"
+      EHRBASE_PASSWORD_ADMIN: "${EHRBASE_DB_ADMIN_PASSWORD}"
+      EHRBASE_USER: "ehrbase_restricted"
+      EHRBASE_PASSWORD: "${EHRBASE_DB_PASSWORD}"
+    volumes:
+      - ehrbase-db:/var/lib/postgresql/data
+
+  # ---------------- bridge: pull, de-identify, push ----------------
+  integration:
+    build: ./integration
+    restart: unless-stopped
+    depends_on: [orthanc, orthanc-deid, ehrbase]
+    environment:
+      ORTHANC_URL: "http://orthanc:8042"
+      ORTHANC_DEID_URL: "http://orthanc-deid:8042"
+      ORTHANC_USER: "${ORTHANC_USER}"
+      ORTHANC_PASSWORD: "${ORTHANC_PASSWORD}"
+      EHRBASE_URL: "http://ehrbase:8080/ehrbase/rest/openehr/v1"
+      EHRBASE_USER: "${EHRBASE_USER}"
+      EHRBASE_PASSWORD: "${EHRBASE_PASSWORD}"
+      # Pseudonymization secret: HMAC key for ids + per-patient date shift. Rotating it re-keys every pseudonym.
+      DEID_SECRET: "${DEID_SECRET}"
+      DEID_VAULT_PATH: "/vault/reident.sqlite"      # re-identification table; mount encrypted storage in production
+      DEID_NAMESPACE: "${DEID_NAMESPACE:-imaging-research}"
+      OPENEHR_TEMPLATE_ID: "imaging_study_summary"
+      POLL_INTERVAL_SEC: "15"
+    volumes:
+      - ./templates:/app/templates:ro
+      - deid-vault:/vault
+    command: ["hci", "watch"]
+
+volumes:
+  orthanc-db:
+  orthanc-deid-db:
+  ehrbase-db:
+  deid-vault:

@@ -1,0 +1,24 @@
+{
+  "_comment": "Site overrides for the source Orthanc. Everything else comes from ORTHANC__* env vars in docker-compose.yml.",
+
+  "StorageCompression": false,
+  "MaximumStorageSize": 0,
+  "MaximumPatientCount": 0,
+
+  "OverwriteInstances": false,
+  "StoreMD5ForAttachments": true,
+
+  "DicomWeb": {
+    "Enable": true,
+    "Root": "/dicom-web/",
+    "EnableWado": true,
+    "StudiesMetadata": "MainDicomTags",
+    "SeriesMetadata": "Full"
+  },
+
+  "_comment_deid": "The bridge does de-identification itself (integration/deid). Orthanc's built-in /anonymize is left at its defaults and is not used, so there is exactly one de-id policy in the system.",
+  "DeidentifyLogs": true,
+
+  "HttpTimeout": 120,
+  "DicomScpTimeout": 60
+}
