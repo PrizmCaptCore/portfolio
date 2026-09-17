@@ -1,0 +1,25 @@
+/**
+ * Default model names for transcription engines.
+ * IMPORTANT: Keep in sync with Rust constants in src-tauri/src/config.rs
+ */
+
+/**
+ * Default Whisper model for transcription when no preference is configured.
+ * This is the recommended balance of accuracy and speed.
+ */
+export const DEFAULT_WHISPER_MODEL = 'large-v3-turbo';
+
+/**
+ * Default CNN STT model for transcription when no preference is configured.
+ * This is the quantized version optimized for speed.
+ */
+export const DEFAULT_CNN_STT_MODEL = 'cnn-stt-0.6b-int8';
+
+/**
+ * Model defaults by provider type
+ */
+export const MODEL_DEFAULTS = {
+  whisper: DEFAULT_WHISPER_MODEL,
+  localWhisper: DEFAULT_WHISPER_MODEL,
+  cnn_stt: DEFAULT_CNN_STT_MODEL,
+} as const;

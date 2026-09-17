@@ -1,0 +1,14 @@
+# Requirements for scripts/setup_translation_model.py
+#
+# Lightweight — no GPU needed.
+#
+#   pip install -r scripts/requirements-translation.txt
+
+# HuggingFace Hub (model file download)
+huggingface_hub
+
+# SentencePiece (read .spm tokenizer files)
+sentencepiece
+
+# HuggingFace Tokenizers (convert .spm → tokenizer.json for candle)
+tokenizers

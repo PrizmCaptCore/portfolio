@@ -59,7 +59,7 @@ class CameraConfig:
 
     # --- 저장 설정 ---
     save_video = True                 # 비디오 저장 사용 여부 (True/False)
-    videos_dir = os.environ.get("VIDEOS_DIR", "potato_videos")   # 비디오 저장 디렉터리 (.env: VIDEOS_DIR)
+    videos_dir = os.environ.get("VIDEOS_DIR", "item_videos")   # 비디오 저장 디렉터리 (.env: VIDEOS_DIR)
 
     # --- 카메라 설치 방향 (카메라별 개별 지정) ---
     # 시리얼 번호를 키로 쓴다. pylon 의 장치 열거 순서는 보장되지 않으므로

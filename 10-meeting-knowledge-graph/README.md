@@ -1,68 +1,66 @@
-# 회의 지식그래프 엔진 (Meeting Knowledge-Graph Engine)
+# 회의·업무 스트림 지식그래프 엔진 (Firehose Ontology)
 
-> AI 회의 인텔리전스 제품 **Relay**(제품명 익명화)의 추론 계층. 회의 전사(transcript)가
-> 스트리밍되는 동안 **사건(activity)·결정(decision)·액션(action)·이슈(issue)** 의 증분
-> 그래프를 만들고, 새 결정이 **과거 결정을 뒤집는(reversal)** 순간을 자동으로 잡아낸다.
+> AI 회의 인텔리전스 제품 **Relay**(제품명 가명화)의 추론 계층. 시간순으로 흘러오는 팀 채팅/회의 스트림을
+> **한 번만 지나가며(single pass)** 결정·액션·이슈의 그래프로 쌓고, 새 결정이 과거 결정을 **뒤집거나 다듬는**
+> 순간을 잡아낸다. 원칙은 **"LLM 은 좁은 판단만, 구조는 결정론적 코드"** 다. 그래프 전체를 LLM 에 맡기면
+> 비용·환각·재현성이 무너지므로, LLM 호출은 분류와 매칭으로 제한하고 어디에 붙일지·언제 새 가지를 낼지는 코드가 정한다.
 
-핵심 설계 원칙은 **"LLM 은 좁은 판단만, 구조는 결정론적 규칙"** 이다.
-LLM 에 그래프 전체를 맡기면 비용·환각·재현성 문제가 생기므로, LLM 호출은 *분류/매칭* 같은
-좁은 판단으로 제한하고 그래프의 골격(언제 새 사건으로 끊을지, 어떤 인과 엣지를 그을지)은
-코드가 결정한다.
+## 구성
 
-## 파이프라인
-
-```
-스트리밍 발화 (transcript utterance)
-        │
-        ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 1. STRUCTURE  (WHAT)   — LLM: 좁은 분류                       │
-│    발화 → {type: decision|action|issue|noise, title, actor,  │
-│            why_hint, ref_hint}                                │
-│    · noise 는 즉시 폐기 (그래프에 넣지 않음)                  │
-└───────────────┬─────────────────────────────────────────────┘
-                ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 2. GROUNDING  (WHERE)  — 기계적 prune → LLM match → 규칙      │
-│    a) surface(): 토큰 겹침으로 열린 activity top-k 만 추림    │
-│       (임베딩 seam — 히스토리가 커져도 LLM 비용 상한 유지)    │
-│    b) match():  후보 중 소속 activity 를 LLM 이 선택 (or none)│
-│    c) THE CUT:  none 이면 → 새 activity 생성 (규칙, 추측 X)   │
-│    d) causal(): why/ref 단서가 명시됐을 때만 caused-by 엣지   │
-└───────────────┬─────────────────────────────────────────────┘
-                ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 3. CONFLICT  (vs 과거)  — LLM: reversal 판정                  │
-│    새 decision 을 과거 decision 들과 비교                     │
-│    reversal(반대/양립불가) 이면 conflicts_with 에 기록         │
-│    → "우리 아까 결정 뒤집었네" 를 자동 표면화                 │
-└─────────────────────────────────────────────────────────────┘
+```text
+.
+├── firehose.py               # v1 모놀리스: 윈도우 단위 추출 + 그래프 (첫 실험)
+├── models.py                 # v2: Node / link / struct / grounding / conflict 를 한 파일에 (구 boolean reversal 설계)
+├── module/                   # v3 모듈 리팩터 (현재 설계)
+│   ├── struct/pipeline.py    # WHAT: 메시지 -> decision|action|issue|noise + title/actor/why_hint/ref_hint
+│   ├── ground/surface.py     # 토큰 겹침으로 top-k 후보 (activity 는 이름 + 최근 3개 멤버만 대표 — 토큰 자석 방지)
+│   ├── ground/match.py       # 단일 LLM 호출: "같은 구체적 사안을 공유하는 후보 or null" (추측보다 null 선호)
+│   ├── ground/dependency.py  # why/ref 힌트를 앞선 노드로 기계적으로 해석 — 인과는 절대 추론하지 않음
+│   ├── ground/grounding.py   # EXTEND / BIRTH(parked peer 에서 탄생) / PARK(pending) 라우팅 + reclaim()
+│   ├── conflict/conflict.py  # 결정 diff 랭커: {ref, rel: reversal|refinement|unrelated, changed}
+│   ├── asker/llm.py          # LLM 클라이언트 (BACKEND=small|claude)
+│   ├── node_arch/node.py     # {uuid, pre[], post[], value{}, date} — pre 는 belongs-to + caused-by 혼합 인접 리스트
+│   ├── tester_stream/        # 채팅 로그 -> 메시지 스트림
+│   └── pipeline.py, __main__.py
+├── viz.py                    # vis-network 타임라인 (x = 시간 순위, y = activity 레인, parked 는 하단 회색)
+├── test_legacy/              # 이전 ablation: replay(분류 recall) / dedup(결정 변수 병합) / thread(병렬 스레드) / ground(LLM 올인 baseline) / compare
+└── later.md                  # 다음 단계 메모
 ```
 
-## 왜 이렇게 설계했나 (Engineering decisions)
+## 세 단계
 
-- **LLM 은 좁은 판단, 코드가 구조 결정** — 모델은 메시지를 분류하고 열린 activity 에 매칭만
-  한다. *새 activity 로 끊을지* 는 매칭 실패 시 발동하는 **결정론적 cut 규칙**이지 모델의
-  추측이 아니다. 재현성과 신뢰성을 확보하는 핵심.
-- **값싼 기계적 prewhere** — LLM 을 부르기 전에 토큰 겹침으로 후보를 top-k 로 줄인다.
-  히스토리가 길어져도 매 발화당 LLM 비용이 선형으로 폭증하지 않도록 상한을 건다.
-  (임베딩 유사도로 교체 가능한 "seam" 으로 설계)
-- **근거 있는 인과만** — `caused-by` 엣지는 발화에 **명시된** why/ref 단서에서만 그린다.
-  모델이 그럴듯하게 지어낸 인과 링크(환각)를 원천 차단.
-- **reversal 자동 감지** — 새 결정을 과거 결정과 대조해 직접적 모순을 찾아, 회의에서
-  자주 놓치는 "말 바꾼 지점"을 자동으로 드러낸다.
+1. **struct (WHAT)** — 메시지당 bounded LLM 호출 1회. `decision | action | issue | noise` 분류와 `title`, `actor`,
+   그리고 **명시적 증거 필드** 둘: `why_hint`(발화에 적힌 원인: "because", "so", "때문에")와 `ref_hint`(역참조: "that", "그거", "again").
+   noise 는 그래프에 들어오지 않는다.
+2. **ground (WHERE)** — 엔진의 핵심.
+   - `surface.py` 가 토큰 겹침으로 싸게 후보를 자른다. 문서화된 "embedding seam" 이라 나중에 임베딩으로 교체 가능.
+     큰 activity 가 모든 메시지를 빨아들이지 않도록 **이름 + 최근 3개 멤버**만으로 대표한다. 겹침 0 이면 fallback 없이 후보 없음.
+   - `match.py` 가 LLM 에 딱 하나만 묻는다: 같은 **구체적** 사안을 공유하는 후보가 있는가, 없으면 null.
+     "공유 스탠드업은 매치가 아니다" 를 프롬프트에 박았다.
+   - `dependency.py` 는 why/ref 힌트를 앞선 노드에 기계적으로 연결한다. 힌트가 없으면 엣지도 없다.
+   - `grounding.py` 가 **EXTEND**(기존 가지 연장) / **BIRTH**(parked peer 에서 새 가지 탄생) / **PARK**(pending 보류) 로 라우팅하고,
+     frontier 가 바뀔 때마다 `reclaim()` 이 보류 항목을 다시 검사한다.
+3. **conflict** — 모순 판정기가 아니라 **diff 랭커**. 새 결정마다 과거 결정을 토픽으로 잘라 가장 가까운 k 개에
+   `{rel: reversal|refinement|unrelated, changed: "<무엇이 달라졌나>"}` 를 붙인다. 임계값은 UI 가 정한다.
+   (`models.py` 의 v2 는 boolean `reversal` 판정이었고, 그 한계 때문에 이렇게 바뀌었다.)
 
-## 구현
+**용어**: *activity* 는 구체적 사안을 이름으로 갖는 워크스트림(가지), "daily sync" 같은 의식(ritual)은 activity 가 아니다.
+*grounding* 은 노드를 올바른 activity 아래에 놓는 일, *frontier* 는 현재 열린 activity + parked 항목의 집합으로 새 메시지가 매칭되는 대상이다.
 
-- [`graph_engine.py`](./graph_engine.py) — 위 3단계 전체를 담은 자족적(self-contained) 구현.
-  `python graph_engine.py` 로 샘플 스트림에 대한 그래프 빌드를 확인할 수 있다.
-- Node 스키마: `{uuid, pre[], post[], value{}, date}` — `pre[]` 가 belongs-to/caused-by
-  엣지를 담는 인접 리스트.
+## 실행
 
-## 기술 스택
+```bash
+export ANTHROPIC_API_KEY=...            # BACKEND=claude
+export SMALL_LLM_URL=http://localhost:8000/v1/chat/completions   # BACKEND=small (OpenAI 호환, X-Internal-Key)
+export SMALL_LLM_KEY=...
+export CHAT_LOG=chat_log.txt            # 카카오톡 내보내기 형식의 채팅 로그
 
-**Technologies**: Python, LLM orchestration (vLLM / Claude 백엔드 스위칭), 그래프 모델링,
-결정론적 규칙 엔진, 스트리밍 파이프라인
+BACKEND=small  python -m module
+BACKEND=claude python -m module
+python viz.py frontier_small.json graph_small.html
+```
 
-> 이 디렉토리의 코드는 포트폴리오용으로 sanitize 되었습니다 — 내부 endpoint/키/제품 특정
-> 샘플은 환경변수·일반 예시로 대체했습니다.
+작은 모델(자체 서빙 Gemma)과 Claude(`claude-sonnet-4-6`) 두 백엔드로 같은 스트림을 돌려 `test_legacy/compare.py` 로 합의율을 본다.
+실제 팀 채팅으로 만든 결과물(`frontier_*.json`, `graph_*.html`)은 실명·내부 정보가 포함되어 포함하지 않는다.
+
+**Technologies**: Python, Anthropic Messages API, OpenAI-compatible self-hosted LLM, vis-network

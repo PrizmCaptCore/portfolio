@@ -1,4 +1,4 @@
-"""농산물 영상 수집 프로그램 (Basler GigE 카메라 여러 대).
+"""라인 영상 수집 프로그램 (Basler GigE 카메라 여러 대).
 
 설정값은 config/settings.py 의 CameraConfig 에서 바꾼다.
 실행 흐름은 module/runtime/ 아래에 있다: startup(시작) -> run_loop(수집) -> shutdown(종료)

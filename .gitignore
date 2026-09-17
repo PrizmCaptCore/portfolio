@@ -43,3 +43,6 @@ logs/
 tmp/
 temp/
 *.tmp
+
+# Terraform lock files are tracked on purpose in the deploy pipeline project
+!13-gitops-deploy-pipeline/**/.terraform.lock.hcl

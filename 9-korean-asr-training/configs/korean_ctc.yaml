@@ -1,0 +1,140 @@
+# Korean CTC ASR - Parakeet Encoder Transfer
+#
+# Parakeet-unified-en-0.6b 인코더를 그대로 재활용한 한국어 CTC 모델
+# init_from_parakeet.py로 생성한 .nemo 파일을 init_from_nemo_model로 로드
+#
+# 학습 단계:
+#   1단계: --freeze-encoder로 인코더 고정, 디코더만 학습 (5~10 epoch)
+#   2단계: 인코더 고정 해제, 낮은 lr로 전체 fine-tuning
+
+name: "korean-ctc-parakeet-encoder"
+
+model:
+  sample_rate: 16000
+  log_prediction: true
+
+  # 초기화된 .nemo 모델에서 시작
+  init_from_nemo_model: ???   # train.py --init-model 인자로 설정됨
+
+  train_ds:
+    manifest_filepath: ???    # train.py --train-manifest 인자로 설정됨
+    sample_rate: 16000
+    batch_size: 16
+    shuffle: true
+    num_workers: 4
+    pin_memory: true
+    max_duration: 20.0
+    min_duration: 0.5
+    # 배치 내 길이 유사한 샘플끼리 묶어 패딩 최소화
+    bucket_duration_boundaries: [2.0, 5.0, 8.0, 12.0, 16.0, 20.0]
+    bucketing_batch_size: [32, 24, 16, 12, 8, 4]
+
+  validation_ds:
+    manifest_filepath: ???    # train.py --val-manifest 인자로 설정됨
+    sample_rate: 16000
+    batch_size: 16
+    shuffle: false
+    num_workers: 4
+    pin_memory: true
+
+  preprocessor:
+    _target_: nemo.collections.asr.modules.AudioToMelSpectrogramPreprocessor
+    sample_rate: 16000
+    normalize: per_feature
+    window_size: 0.025
+    window_stride: 0.01
+    window: hann
+    features: 128
+    n_fft: 512
+    frame_splicing: 1
+    dither: 1.0e-05
+    pad_to: 0
+    pad_value: 0.0
+
+  spec_augment:
+    _target_: nemo.collections.asr.modules.SpectrogramAugmentation
+    freq_masks: 2
+    time_masks: 10
+    freq_width: 27
+    time_width: 0.05
+
+  # Parakeet-unified 인코더와 완전히 동일한 구조
+  encoder:
+    _target_: nemo.collections.asr.modules.ConformerEncoder
+    feat_in: 128
+    feat_out: -1
+    n_layers: 24
+    d_model: 1024
+    subsampling: dw_striding
+    subsampling_factor: 8
+    subsampling_conv_channels: 256
+    causal_downsampling: false
+    reduction: null
+    reduction_position: null
+    reduction_factor: 1
+    ff_expansion_factor: 4
+    self_attention_model: rel_pos
+    n_heads: 8
+    att_context_size: [-1, -1]
+    xscaling: true
+    untie_biases: true
+    pos_emb_max_len: 5000
+    conv_kernel_size: 9
+    conv_norm_type: batch_norm
+    conv_context_size: null
+    dropout: 0.1
+    dropout_pre_encoder: 0.1
+    dropout_emb: 0.0
+    dropout_att: 0.1
+    stochastic_depth_drop_prob: 0.0
+    stochastic_depth_mode: linear
+    stochastic_depth_start_layer: 1
+
+  decoder:
+    _target_: nemo.collections.asr.modules.ConvASRDecoder
+    feat_in: 1024
+    num_classes: -1   # 토크나이저 vocab 크기로 자동 설정
+    vocabulary: []
+
+  tokenizer:
+    dir: ???          # train.py --tokenizer-dir 인자로 설정됨
+    type: bpe
+
+  ctc_reduction: mean_batch
+  skip_nan_grad: false
+
+  optim:
+    name: adamw
+    lr: 5e-5          # 1단계(디코더만): 1e-4 / 2단계(전체): 5e-5
+    betas: [0.9, 0.98]
+    weight_decay: 1e-3
+    sched:
+      name: CosineAnnealing
+      warmup_steps: 2000
+      min_lr: 1e-6
+
+trainer:
+  devices: 1
+  accelerator: gpu
+  max_epochs: 50
+  accumulate_grad_batches: 2     # effective batch = 16 * 2 = 32
+  gradient_clip_val: 1.0
+  log_every_n_steps: 50
+  val_check_interval: 1.0        # 매 epoch 검증
+  precision: 16-mixed            # FP16 학습으로 메모리 절약
+  enable_checkpointing: true
+  logger: true
+
+exp_manager:
+  exp_dir: outputs/
+  name: ${name}
+  create_tensorboard_logger: true
+  create_checkpoint_callback: true
+  checkpoint_callback_params:
+    monitor: val_wer
+    mode: min
+    save_top_k: 3
+    save_last: true
+    filename: "{epoch}-{step}-{val_wer:.4f}"
+  resume_if_exists: true
+  resume_ignore_no_checkpoint: true

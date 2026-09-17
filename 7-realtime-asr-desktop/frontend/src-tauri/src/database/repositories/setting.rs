@@ -1,0 +1,395 @@
+use crate::database::models::{Setting, TranscriptSetting};
+use crate::summary::RelayAIConfig;
+use sqlx::SqlitePool;
+
+#[derive(serde::Deserialize, Debug)]
+pub struct SaveModelConfigRequest {
+    pub provider: String,
+    pub model: String,
+    #[serde(rename = "whisperModel")]
+    pub whisper_model: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: Option<String>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct SaveTranscriptConfigRequest {
+    pub provider: String,
+    pub model: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: Option<String>,
+}
+
+pub struct SettingsRepository;
+
+// Transcript providers: localWhisper, deepgram, elevenLabs, groq, openai
+// Summary providers: openai, claude, groq, openrouter, relay-ai
+// NOTE: Handle data exclusion in the higher layer as this is database abstraction layer(using SELECT *)
+
+impl SettingsRepository {
+    pub async fn get_model_config(
+        pool: &SqlitePool,
+    ) -> std::result::Result<Option<Setting>, sqlx::Error> {
+        let setting = sqlx::query_as::<_, Setting>("SELECT * FROM settings LIMIT 1")
+            .fetch_optional(pool)
+            .await?;
+        Ok(setting)
+    }
+
+    pub async fn save_model_config(
+        pool: &SqlitePool,
+        provider: &str,
+        model: &str,
+        whisper_model: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        // Using id '1' for backward compatibility
+        sqlx::query(
+            r#"
+            INSERT INTO settings (id, provider, model, whisperModel)
+            VALUES ('1', $1, $2, $3)
+            ON CONFLICT(id) DO UPDATE SET
+                provider = excluded.provider,
+                model = excluded.model,
+                whisperModel = excluded.whisperModel
+            "#,
+        )
+        .bind(provider)
+        .bind(model)
+        .bind(whisper_model)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn save_api_key(
+        pool: &SqlitePool,
+        provider: &str,
+        api_key: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        // Relay AI uses JSON config (customOpenAIConfig column) instead of a separate API key column.
+        // Accept the legacy "custom-openai" value too — old DB rows may still hold it.
+        if provider == "relay-ai" || provider == "custom-openai" {
+            return Err(sqlx::Error::Protocol(
+                "relay-ai provider should use save_relay_ai_config() instead of save_api_key()".into(),
+            ));
+        }
+
+        let api_key_column = match provider {
+            "openai" => "openaiApiKey",
+            "claude" => "anthropicApiKey",
+            "groq" => "groqApiKey",
+            "openrouter" => "openRouterApiKey",
+            _ => {
+                return Err(sqlx::Error::Protocol(
+                    format!("Invalid provider: {}", provider).into(),
+                ))
+            }
+        };
+
+        let query = format!(
+            r#"
+            INSERT INTO settings (id, provider, model, whisperModel, "{}")
+            VALUES ('1', 'openai', 'gpt-4o-2024-11-20', 'large-v3', $1)
+            ON CONFLICT(id) DO UPDATE SET
+                "{}" = $1
+            "#,
+            api_key_column, api_key_column
+        );
+        sqlx::query(&query).bind(api_key).execute(pool).await?;
+
+        Ok(())
+    }
+
+    pub async fn get_api_key(
+        pool: &SqlitePool,
+        provider: &str,
+    ) -> std::result::Result<Option<String>, sqlx::Error> {
+        // Relay AI uses JSON config - extract API key from there.
+        // Legacy "custom-openai" still resolves the same way.
+        if provider == "relay-ai" || provider == "custom-openai" {
+            let config = Self::get_relay_ai_config(pool).await?;
+            return Ok(config.and_then(|c| c.api_key));
+        }
+
+        let api_key_column = match provider {
+            "openai" => "openaiApiKey",
+            "groq" => "groqApiKey",
+            "claude" => "anthropicApiKey",
+            "openrouter" => "openRouterApiKey",
+            _ => {
+                return Err(sqlx::Error::Protocol(
+                    format!("Invalid provider: {}", provider).into(),
+                ))
+            }
+        };
+
+        let query = format!(
+            "SELECT {} FROM settings WHERE id = '1' LIMIT 1",
+            api_key_column
+        );
+        let api_key = sqlx::query_scalar(&query).fetch_optional(pool).await?;
+        Ok(api_key)
+    }
+
+    pub async fn get_transcript_config(
+        pool: &SqlitePool,
+    ) -> std::result::Result<Option<TranscriptSetting>, sqlx::Error> {
+        let setting =
+            sqlx::query_as::<_, TranscriptSetting>("SELECT * FROM transcript_settings LIMIT 1")
+                .fetch_optional(pool)
+                .await?;
+        Ok(setting)
+    }
+
+    pub async fn save_transcript_config(
+        pool: &SqlitePool,
+        provider: &str,
+        model: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO transcript_settings (id, provider, model)
+            VALUES ('1', $1, $2)
+            ON CONFLICT(id) DO UPDATE SET
+                provider = excluded.provider,
+                model = excluded.model
+            "#,
+        )
+        .bind(provider)
+        .bind(model)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn save_transcript_api_key(
+        pool: &SqlitePool,
+        provider: &str,
+        api_key: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        let api_key_column = match provider {
+            "localWhisper" => "whisperApiKey",
+            "cnn-stt" | "whisper" => return Ok(()), // Local providers don't need an API key
+            "deepgram" => "deepgramApiKey",
+            "elevenLabs" => "elevenLabsApiKey",
+            "groq" => "groqApiKey",
+            "openai" => "openaiApiKey",
+            _ => {
+                return Err(sqlx::Error::Protocol(
+                    format!("Invalid provider: {}", provider).into(),
+                ))
+            }
+        };
+
+        let query = format!(
+            r#"
+            INSERT INTO transcript_settings (id, provider, model, "{}")
+            VALUES ('1', 'cnn-stt', '{}', $1)
+            ON CONFLICT(id) DO UPDATE SET
+                "{}" = $1
+            "#,
+            api_key_column,
+            crate::config::DEFAULT_CNN_STT_MODEL,
+            api_key_column
+        );
+        sqlx::query(&query).bind(api_key).execute(pool).await?;
+
+        Ok(())
+    }
+
+    pub async fn get_transcript_api_key(
+        pool: &SqlitePool,
+        provider: &str,
+    ) -> std::result::Result<Option<String>, sqlx::Error> {
+        let api_key_column = match provider {
+            "localWhisper" => "whisperApiKey",
+            "cnn-stt" | "whisper" => return Ok(None), // Local providers don't need an API key
+            "deepgram" => "deepgramApiKey",
+            "elevenLabs" => "elevenLabsApiKey",
+            "groq" => "groqApiKey",
+            "openai" => "openaiApiKey",
+            _ => {
+                return Err(sqlx::Error::Protocol(
+                    format!("Invalid provider: {}", provider).into(),
+                ))
+            }
+        };
+
+        let query = format!(
+            "SELECT {} FROM transcript_settings WHERE id = '1' LIMIT 1",
+            api_key_column
+        );
+        let api_key = sqlx::query_scalar(&query).fetch_optional(pool).await?;
+        Ok(api_key)
+    }
+
+    pub async fn get_google_translate_api_key(
+        pool: &SqlitePool,
+    ) -> std::result::Result<Option<String>, sqlx::Error> {
+        let key: Option<String> = sqlx::query_scalar(
+            "SELECT googleTranslateApiKey FROM transcript_settings WHERE id = '1' LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await?;
+        Ok(key)
+    }
+
+    pub async fn save_google_translate_api_key(
+        pool: &SqlitePool,
+        api_key: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query("UPDATE transcript_settings SET googleTranslateApiKey = $1 WHERE id = '1'")
+            .bind(api_key)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_translation_model(
+        pool: &SqlitePool,
+    ) -> std::result::Result<String, sqlx::Error> {
+        let model: Option<String> = sqlx::query_scalar(
+            "SELECT translationModel FROM transcript_settings WHERE id = '1' LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await?;
+        Ok(model.unwrap_or_else(|| "gpt-4o-mini".to_string()))
+    }
+
+    pub async fn save_translation_model(
+        pool: &SqlitePool,
+        model: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query("UPDATE transcript_settings SET translationModel = $1 WHERE id = '1'")
+            .bind(model)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_api_key(
+        pool: &SqlitePool,
+        provider: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        // Relay AI uses JSON config - clear the entire config.
+        // Legacy "custom-openai" still resolves the same way.
+        if provider == "relay-ai" || provider == "custom-openai" {
+            sqlx::query("UPDATE settings SET customOpenAIConfig = NULL WHERE id = '1'")
+                .execute(pool)
+                .await?;
+            return Ok(());
+        }
+
+        let api_key_column = match provider {
+            "openai" => "openaiApiKey",
+            "groq" => "groqApiKey",
+            "claude" => "anthropicApiKey",
+            "openrouter" => "openRouterApiKey",
+            _ => {
+                return Err(sqlx::Error::Protocol(
+                    format!("Invalid provider: {}", provider).into(),
+                ))
+            }
+        };
+
+        let query = format!(
+            "UPDATE settings SET {} = NULL WHERE id = '1'",
+            api_key_column
+        );
+        sqlx::query(&query).execute(pool).await?;
+
+        Ok(())
+    }
+
+    // ===== RELAY AI CONFIG METHODS =====
+
+    /// Gets the Relay AI configuration from JSON
+    ///
+    /// # Returns
+    /// * `Ok(Some(RelayAIConfig))` - Config exists and is valid JSON
+    /// * `Ok(None)` - No config stored
+    /// * `Err(sqlx::Error)` - Database error
+    pub async fn get_relay_ai_config(
+        pool: &SqlitePool,
+    ) -> std::result::Result<Option<RelayAIConfig>, sqlx::Error> {
+        use sqlx::Row;
+
+        let row = sqlx::query(
+            r#"
+            SELECT customOpenAIConfig
+            FROM settings
+            WHERE id = '1'
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(record) => {
+                let config_json: Option<String> = record.get("customOpenAIConfig");
+
+                if let Some(json) = config_json {
+                    // Parse JSON into RelayAIConfig
+                    let mut config: RelayAIConfig = serde_json::from_str(&json).map_err(|e| {
+                        sqlx::Error::Protocol(
+                            format!("Invalid JSON in customOpenAIConfig: {}", e).into(),
+                        )
+                    })?;
+
+                    // Auto-migrate stale gateway endpoints. Two cases:
+                    //   - direct Modal URLs from before the gateway existed
+                    //   - dev.example.com from before the prod cutover
+                    // All traffic must route through www.example.com now.
+                    if config.endpoint.contains("modal.run")
+                        || config.endpoint.contains("dev.example.com")
+                    {
+                        config.endpoint = "https://api.example.com/api/v1/ai".to_string();
+                    }
+
+                    Ok(Some(config))
+                } else {
+                    Ok(None)
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Saves the Relay AI configuration as JSON
+    ///
+    /// # Arguments
+    /// * `pool` - Database connection pool
+    /// * `config` - RelayAIConfig to save (includes endpoint, apiKey, model, maxTokens, temperature, topP)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Config saved successfully
+    /// * `Err(sqlx::Error)` - Database or JSON serialization error
+    pub async fn save_relay_ai_config(
+        pool: &SqlitePool,
+        config: &RelayAIConfig,
+    ) -> std::result::Result<(), sqlx::Error> {
+        // Serialize config to JSON
+        let config_json = serde_json::to_string(config).map_err(|e| {
+            sqlx::Error::Protocol(format!("Failed to serialize config to JSON: {}", e).into())
+        })?;
+
+        // Upsert into settings table
+        sqlx::query(
+            r#"
+            INSERT INTO settings (id, provider, model, whisperModel, customOpenAIConfig)
+            VALUES ('1', 'relay-ai', $1, 'large-v3', $2)
+            ON CONFLICT(id) DO UPDATE SET
+                customOpenAIConfig = excluded.customOpenAIConfig
+            "#,
+        )
+        .bind(&config.model)
+        .bind(config_json)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+}

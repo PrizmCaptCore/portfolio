@@ -1,0 +1,11 @@
+*.nemo
+*.pt
+*.ckpt
+__pycache__/
+*.pyc
+.env
+data/downloads/
+data/manifests/
+tokenizer/
+outputs/
+.nemo_cache/

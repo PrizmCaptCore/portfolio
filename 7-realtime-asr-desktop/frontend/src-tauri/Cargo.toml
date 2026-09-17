@@ -1,0 +1,205 @@
+[package]
+name = "relay-assistant"
+# Dev placeholder. Release CI (.github/workflows/release.yml ??"Sync version
+# from tag") rewrites this to the pushed tag (e.g., v0.4.0 ??0.4.0) before
+# running `tauri build`, so shipped artifacts carry the real version while
+# local dev builds stay at 0.0.0-dev (displayed as "DEMO" in the UI ??# see `frontend/src/lib/version.ts`).
+version = "0.0.23"
+description = "A Tauri App for meeting minutes"
+authors = ["Sujith S"]
+license = "MIT"
+repository = "https://github.com/Zackriya-Solutions/meeting-minutes"
+edition = "2021"
+rust-version = "1.77"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# Opt-in Marian NMT translator fallback (candle + tokenizers). Production
+# release builds route translate through the gateway, so this path is
+# unreachable in the shipped binary ??compiling it would add CI time for
+# code that never runs. Kept behind a feature so local development can
+# still exercise the fallback with `--features local-ml` if needed.
+local-ml = [
+    "dep:candle-core",
+    "dep:candle-nn",
+    "dep:candle-transformers",
+    "dep:hf-hub",
+    "dep:tokenizers",
+]
+
+[build-dependencies]
+tauri-build = { version = "2.3.0", features = [] }
+reqwest = { version = "0.11", features = ["blocking", "multipart", "json", "stream"] }
+zip = "2.2"           # ZIP extraction (Windows, macOS)
+tar = "0.4"           # TAR extraction (Linux)
+xz2 = "0.1"           # XZ decompression (Linux)
+
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+anyhow = "1.0"
+dotenvy = "0.15"
+once_cell = "1.17.1"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+posthog-rs = "0.3.7"
+tauri-plugin-http = "2"
+
+# Cross-platform audio capture
+cpal = "0.15.3"
+
+# Wav encoding - now using manual WAV creation instead of hound
+# hound = "3.5"
+
+# Cli ! shouldn't be required if using as lib
+clap = { version = "4.3", features = ["derive"] }
+
+# Dates
+chrono = { version = "0.4.31", features = ["serde"] }
+
+# Log
+log = "0.4"
+env_logger = "0.11"
+fern = "0.7"
+tracing = "0.1.40"
+which = "6.0.1"
+
+# Bytes
+bytemuck = "1.16.1"
+
+# EBU R128 loudness normalization (professional broadcast standard)
+ebur128 = "0.1"
+
+# Noise suppression - RNNoise-based neural network noise reduction
+nnnoiseless = "0.5"
+
+futures-util = "0.3"
+silero_rs = { git = "https://github.com/emotechlab/silero-rs", rev = "26a6460", package = "silero" }
+
+# Candle: Rust ML framework for translation (Marian NMT). Gated behind
+# `local-ml` ??release builds route translate through the gateway and
+# never touch this.
+candle-core = { version = "0.8", optional = true }
+candle-nn = { version = "0.8", optional = true }
+candle-transformers = { version = "0.8", optional = true }
+hf-hub = { version = "0.3", optional = true }
+
+# Async
+tokio = { version = "1.32.0", features = ["full", "tracing"] }
+tokio-util = "0.7"  # Utilities for tokio including CancellationToken
+async-trait = "0.1"  # Trait abstraction for async methods
+
+reqwest = { version = "0.11", features = ["blocking", "multipart", "json", "stream"] }
+
+# NeMo WebSocket STT client
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+
+# crossbeam
+crossbeam = "0.8.4"
+dashmap = "6.1.0"
+
+# Directories
+dirs = "5.0.1"
+
+# Additional dependencies for notification system
+url = "2.5.0"
+
+
+# System monitoring for resource management
+sysinfo = "0.32"
+
+lazy_static = { version = "1.4.0" }
+realfft = "3.4.0"
+regex = "1.11.0"
+tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"], optional = true }
+bytes = { version = "1.9.0", features = ["serde"] }
+
+esaxx-rs = "0.1.10"
+symphonia = { version = "0.5.4", features = ["aac", "isomp4", "mp3", "flac", "ogg", "vorbis", "pcm", "wav", "opt-simd"] }
+rand = "0.8.5"
+rayon = "1.10"
+rubato = "0.15.0"
+ringbuf = "0.4.8"
+tempfile = "3.3.0"
+
+ffmpeg-sidecar = { git = "https://github.com/nathanbabcock/ffmpeg-sidecar", branch = "main" }
+
+sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite", "chrono"] }
+
+# sqlite-vec extension for ANN/KNN over embedding vectors. The Rust crate
+# ships a vendored static lib that exposes `sqlite3_vec_init`. We register
+# it via `sqlite3_auto_extension` (from libsqlite3-sys, same version as
+# sqlx-sqlite's transitive dep ??0.30.x ??so both crates resolve to the
+# SAME static sqlite library; otherwise the registration would no-op for
+# sqlx connections). `bundled` is required to match sqlx-sqlite's feature
+# unification.
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+sqlite-vec = "0.1"
+
+# Common Tauri configuration
+tauri = { version = "2.10", features = [ "macos-private-api", "protocol-asset", "tray-icon"] }
+tauri-plugin-fs = "2.5"
+tauri-plugin-dialog = "2.3.0"
+tauri-plugin-store = "2.4.0"
+tauri-plugin-notification = "2.3.1"
+tauri-plugin-process = "2.3.0"
+tauri-plugin-clipboard-manager = "2.3"
+tauri-plugin-updater = "2"
+tauri-plugin-opener = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Apple Accelerate BLAS for Candle CPU matmul (3-5x faster than pure Rust).
+# Metal dropped: candle-transformers marian lacks softmax-last-dim on Metal.
+# Optional ??only pulled in when the `local-ml` feature enables candle.
+candle-core = { version = "0.8", features = ["accelerate"], optional = true }
+candle-nn = { version = "0.8", features = ["accelerate"], optional = true }
+tauri = { version = "2.10", features = ["protocol-asset", "macos-private-api", "tray-icon"] }
+once_cell = "1.17.1"
+objc = "0.2.7"
+tauri-plugin-log = { version = "2.6.0", features = ["colored"] }
+anyhow = "1.0"
+time = { version = "0.3", features = ["formatting"] }
+reqwest = { version = "0.11", features = ["multipart", "json"] }
+core-graphics = "0.23"
+cidre = { git = "https://github.com/yury/cidre", rev = "a9587fa", features = ["av"] }
+dasp = "0.11.0"
+futures-channel = "0.3.31"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+futures-channel = "0.3.31"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+futures-channel = "0.3.31"
+
+# Intel MKL BLAS for x86_64 Linux only ??Windows excluded to avoid libiomp5md.dll
+# bundling issues in the NSIS/MSI installer. Optional: only included with the
+# `local-ml` feature.
+[target.'cfg(all(target_arch = "x86_64", target_os = "linux"))'.dependencies]
+candle-core = { version = "0.8", features = ["mkl"], optional = true }
+candle-nn = { version = "0.8", features = ["mkl"], optional = true }
+
+[dev-dependencies]
+tempfile = "3.3.0"
+infer = "0.15"
+criterion = { version = "0.5.1", features = ["async_tokio"] }
+memory-stats = "1.0"
+strsim = "0.10.0"
+futures = "0.3.31"
+tracing-subscriber = "0.3.16"
+
+[patch.crates-io]
+cpal = { git = "https://github.com/RustAudio/cpal", rev = "51c3b43" }
+
+# ---------------------------------------------------------------------------
+# staticlib + MKL + crt-static combined archive exceeds ar format 4 GB limit,
+# triggering a rustc ICE (TryFromIntError in ar_archive_writer).
+# debug=1 (line tables only) keeps the archive under the limit.
+# ---------------------------------------------------------------------------
+[profile.dev]
+debug = 1

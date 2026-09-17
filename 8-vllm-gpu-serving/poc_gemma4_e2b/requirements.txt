@@ -1,0 +1,13 @@
+transformers
+librosa
+accelerate
+soundfile
+fastapi
+uvicorn[standard]
+websockets
+numpy
+pillow
+# torchvision + torchaudio are pulled in via the XPU index alongside torch:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+# They are not listed here because the index-url has to be passed at install time
+# and that doesn't fit a vanilla `pip install -r requirements.txt` invocation.

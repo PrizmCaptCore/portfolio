@@ -1,0 +1,209 @@
+name: Build & Push
+
+# Builds RunPod inference/embedding/translate images on x86_64 GitHub
+# runners (no QEMU) and pushes them to GHCR as linux/amd64. Services
+# build sequentially (max-parallel: 1) so each gets a fresh runner —
+# vLLM-based images with baked-in HF weights are large.
+#
+# Endpoint topology on RunPod (see README §2-4):
+#   - inference  : Min Workers 1 (always-on, real-time meeting summary/intent)
+#   - embedding  : Min Workers 0 (scale-to-zero, sparse Notion sync batches)
+#   - translate  : Min Workers 0 or 1 depending on usage
+#
+# STT is excluded: the NeMo base image (~80GB) exceeds any GitHub-hosted
+# runner's disk budget. Build STT via RunPod's native GitHub build or on a
+# local machine with >200GB free. See README §0.
+#
+# Auth:
+#   - GHCR push: repo's built-in GITHUB_TOKEN (permissions.packages: write).
+#   - HF model download: HF_TOKEN repo secret, passed as a BuildKit secret
+#     so it never lands in image layers. Required for gated Gemma weights;
+#     harmless for public weights (Qwen3-Embedding).
+# RunPod pulls require a separate PAT registered under Container Registry
+# Auth (see README §0-1).
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+    # Only image-affecting files trigger an automatic build. server.py,
+    # stress_test.py, handler.py, and similar pure-code files are
+    # pulled at container start by entrypoint.sh from origin/main
+    # (zero-rebuild deploy — POST /admin/reload after pushing), so a
+    # GHA build for them is wasted CI minutes. Add a path here only
+    # if the file is COPY'd into the image or installed during build.
+    paths:
+      - "runpod_inference/Dockerfile"
+      - "runpod_inference/entrypoint.sh"
+      - "runpod_embedding/Dockerfile"
+      - "runpod_embedding/entrypoint.sh"
+      - "runpod_translate/Dockerfile"
+      - "runpod_translate/entrypoint.sh"
+      - "runpod_realtime_stt/Dockerfile"
+      - "runpod_realtime_stt/entrypoint.sh"
+      - ".github/workflows/build-push.yml"
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Services to rebuild (comma-sep subset of: inference,embedding,translate,realtime_stt)"
+        required: false
+        default: "inference,embedding,translate"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: your-org
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      inference: ${{ steps.decide.outputs.inference }}
+      embedding: ${{ steps.decide.outputs.embedding }}
+      translate: ${{ steps.decide.outputs.translate }}
+      realtime_stt: ${{ steps.decide.outputs.realtime_stt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed service paths (push events)
+        id: changes
+        if: github.event_name == 'push'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            inference:
+              - 'runpod_inference/Dockerfile'
+              - 'runpod_inference/entrypoint.sh'
+              - '.github/workflows/build-push.yml'
+            embedding:
+              - 'runpod_embedding/Dockerfile'
+              - 'runpod_embedding/entrypoint.sh'
+              - '.github/workflows/build-push.yml'
+            translate:
+              - 'runpod_translate/Dockerfile'
+              - 'runpod_translate/entrypoint.sh'
+              - '.github/workflows/build-push.yml'
+            realtime_stt:
+              - 'runpod_realtime_stt/Dockerfile'
+              - 'runpod_realtime_stt/entrypoint.sh'
+              - '.github/workflows/build-push.yml'
+
+      - name: Decide which services to build
+        id: decide
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            wanted="${{ github.event.inputs.services }}"
+            for svc in inference embedding translate realtime_stt; do
+              if [[ ",$wanted," == *",$svc,"* ]]; then
+                echo "$svc=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "$svc=false" >> "$GITHUB_OUTPUT"
+              fi
+            done
+          else
+            echo "inference=${{ steps.changes.outputs.inference }}" >> "$GITHUB_OUTPUT"
+            echo "embedding=${{ steps.changes.outputs.embedding }}" >> "$GITHUB_OUTPUT"
+            echo "translate=${{ steps.changes.outputs.translate }}" >> "$GITHUB_OUTPUT"
+            echo "realtime_stt=${{ steps.changes.outputs.realtime_stt }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - service: inference
+            context: runpod_inference
+            image: relay-inference
+          - service: embedding
+            context: runpod_embedding
+            image: relay-embedding
+          - service: translate
+            context: runpod_translate
+            image: relay-translate
+          - service: realtime_stt
+            context: runpod_realtime_stt
+            image: relay-realtime-stt-stt
+    steps:
+      - name: Gate on detect output
+        id: gate
+        run: |
+          case "${{ matrix.service }}" in
+            inference) should="${{ needs.detect.outputs.inference }}";;
+            embedding) should="${{ needs.detect.outputs.embedding }}";;
+            translate) should="${{ needs.detect.outputs.translate }}";;
+            realtime_stt) should="${{ needs.detect.outputs.realtime_stt }}";;
+          esac
+          echo "run=$should" >> "$GITHUB_OUTPUT"
+          echo "Service ${{ matrix.service }} run=$should"
+
+      - name: Free disk space
+        if: steps.gate.outputs.run == 'true'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - name: Set up Docker Buildx
+        if: steps.gate.outputs.run == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.gate.outputs.run == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # main pushes update :latest. Branch pushes get a sanitized branch tag
+      # (e.g. feat/vllm-poc-translate → :feat-vllm-poc-translate) so PoC work
+      # never touches the production :latest image.
+      - name: Compute image tag
+        if: steps.gate.outputs.run == 'true'
+        id: tag
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            primary=latest
+          else
+            primary=$(echo "${{ github.ref_name }}" | tr '/' '-')
+          fi
+          echo "primary=$primary" >> "$GITHUB_OUTPUT"
+          echo "Primary tag: $primary"
+
+      - name: Build & push
+        if: steps.gate.outputs.run == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.context }}
+          platforms: linux/amd64
+          push: true
+          # HF_TOKEN piped through BuildKit secret so HF gated weights
+          # (Gemma 4, TranslateGemma) can be downloaded during build
+          # without baking the token into image layers.
+          secrets: |
+            hf_token=${{ secrets.HF_TOKEN }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image }}:${{ steps.tag.outputs.primary }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image }}:sha-${{ github.sha }}
+          # No cache-from/to: vLLM base + baked-in HF weights make the final
+          # image ~19GB; BuildKit's cache export (mode=max) doubled the
+          # disk footprint and exceeded the GHA runner's budget. Subsequent
+          # builds will rebuild from scratch — acceptable since model
+          # weights and base image rarely change.

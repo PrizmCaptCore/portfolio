@@ -1,0 +1,4 @@
+# python default ignore
+__pycache__/
+*.pyc
+*.pyd

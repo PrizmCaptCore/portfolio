@@ -1,6 +1,6 @@
 # Basler GigE 멀티카메라 영상 수집기 (Jetson AGX Orin)
 
-> 농산물 선별 라인의 학습 데이터 확보용 수집기. 컨베이어 위 카메라 여러 대의 영상을 장시간
+> 산업용 선별 라인의 학습 데이터 확보용 수집기. 컨베이어 위 카메라 여러 대의 영상을 장시간
 > 끊김 없이 녹화해야 하고, 현장 PC(Jetson)는 사람이 상주하지 않는다. 설계의 핵심은 "녹화가 되느냐"가
 > 아니라 **재부팅 후에도 카메라-설정 매핑이 어긋나지 않고, 디스크가 차도 파일이 깨지지 않는 것**이었다.
 
@@ -75,7 +75,7 @@ fps = 15
 bitrate = 8000000
 segment_minutes = 10
 save_video = True
-videos_dir = os.environ.get("VIDEOS_DIR", "potato_videos")
+videos_dir = os.environ.get("VIDEOS_DIR", "item_videos")
 camera_rotate_180 = _rotate_table(os.environ.get("CAMERA_ROTATE_180", ""))
 ```
 
@@ -83,7 +83,7 @@ camera_rotate_180 = _rotate_table(os.environ.get("CAMERA_ROTATE_180", ""))
 
 ```bash
 cp .env.example .env
-# VIDEOS_DIR=/mnt/ssd/potato_videos
+# VIDEOS_DIR=/mnt/ssd/item_videos
 # CAMERA_ROTATE_180=<시리얼>:0,<시리얼>:1     # 카메라별 180도 설치 보정
 ```
 
@@ -93,7 +93,7 @@ cp .env.example .env
 - 프레임 속도: 15 FPS (카메라 2대가 1GbE 링크 하나를 공유하므로 대역 배분 후 고정)
 - 인코딩 비트레이트: 8 Mbps
 - 세그먼트 분할: 10분마다 새 파일 생성
-- 저장 위치: `potato_videos/`
+- 저장 위치: `item_videos/`
 
 ## How to Run
 
@@ -118,7 +118,7 @@ python main.py
 카메라번호_년월일_시분초_10분단위저장순서.mp4
 
 ```text
-potato_videos/
+item_videos/
 ├── cam0_20260825_123456_000.mp4
 ├── cam0_20260825_123456_001.mp4
 ├── cam1_20260825_123456_000.mp4

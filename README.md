@@ -1,8 +1,8 @@
 # 김조민 (Jomin Kim) — Engineering Portfolio
 
 **AI 제품 엔지니어링 · MLOps · 클라우드 인프라 · 헬스케어 IT.**
-실시간 음성 AI 제품(온디바이스 STT부터 비용 튜닝된 GPU 서빙까지)을 혼자서 풀스택으로 구축한
-경험과, 프로덕션 MLOps/인프라 역량을 함께 담았습니다.
+실시간 음성 AI 제품(데스크톱 오디오 파이프라인부터 비용 튜닝된 GPU 서빙, 커스텀 ASR 학습까지)을 혼자서
+풀스택으로 구축한 경험과, 프로덕션 MLOps/인프라·엣지 비전 역량을 함께 담았습니다.
 
 Production-grade AI product engineering, MLOps infrastructure, and healthcare data pipelines —
 showcasing Rust/Tauri real-time speech, vLLM GPU serving, custom ASR training, AWS, Kubernetes,
@@ -11,7 +11,8 @@ Terraform, and Python.
 ## Overview
 
 This portfolio demonstrates hands-on experience in:
-- **AI Product Engineering**: 실시간 음성(Tauri/Rust + 온디바이스 CTC), vLLM GPU 서빙, 커스텀 한국어 ASR, 회의 지식그래프
+- **AI Product Engineering**: 실시간 음성(Tauri/Rust 오디오 파이프라인 + 스트리밍 STT), vLLM/NeMo GPU 서빙, 커스텀 한국어 ASR, 회의 지식그래프
+- **Edge Vision & Deployment**: GigE 멀티카메라 수집, NanoDet 선별 판정, NHN Cloud Terraform + Nuitka 온프레미스 패키징
 - **Cloud Infrastructure**: AWS (EC2, S3, IAM, VPC) with Terraform IaC
 - **MLOps**: ClearML, Airflow, MLflow pipelines with autoscaling
 - **Healthcare Systems**: FHIR R4, PACS/DICOM integration
@@ -88,37 +89,37 @@ Production-ready Python packages for ML workflows:
 모델, 웹 플랫폼, 지식그래프 엔진까지 **전 계층을 직접** 설계·구현했습니다. 아래는 그 서브시스템들이며,
 제품/조직명·인프라 좌표·자격증명·비용 수치·고객 데이터는 제거했습니다.
 
-### 7. [실시간 데스크톱 전사](./7-realtime-asr-desktop/)
-Tauri(Rust) 네이티브 앱, 하이브리드 실시간 STT:
-- 온디바이스 CTC 로 즉시 partial, 클라우드 모델로 최종 전사 (지연 vs 정확도)
-- 마이크/시스템 오디오 채널 분리 + 화자 구분
-- VAD·노이즈 억제, 단일 바이너리 배포, 동시 150 세션 검증
+### 7. [실시간 회의 어시스턴트 데스크톱 클라이언트](./7-realtime-asr-desktop/)
+Tauri 2 + Rust 코어 + Next.js 웹뷰, 전체 소스:
+- 마이크/시스템 오디오 독립 캡처(macOS CoreAudio tap) → RNNoise·R128·리샘플·RMS 게이트 → Silero VAD 발화 분할
+- 게이트웨이 서명 세션으로 STT WebSocket(f32 PCM) 연결, LCP stable-prefix 로 partial/final 정합 (깜빡임 0)
+- sqlx SQLite + sqlite-vec 로컬 RAG, 웹뷰 WASM 임베딩, minisign updater 릴리스
 
-**Technologies**: Rust, Tauri, Next.js/React, ONNX Runtime, Parakeet CTC, Pyannote VAD
+**Technologies**: Rust, Tauri 2, cpal, Silero VAD, nnnoiseless, tokio-tungstenite, sqlx/sqlite-vec, Next.js 14, React, TypeScript
 
-### 8. [비용 튜닝 vLLM GPU 서빙](./8-vllm-gpu-serving/)
-요약/임베딩/번역 vLLM 서빙, duty cycle 기반 토폴로지:
-- 실시간 대기 서비스만 always-on, sparse 워크로드는 scale-to-zero
-- ~80GB 베이스 이미지의 zero-rebuild(핫리로드) 배포
-- 계층 인증, Matryoshka 임베딩 절단, path-filtered CI
+### 8. [비용 튜닝 GPU 서빙 플릿](./8-vllm-gpu-serving/)
+STT(CNN STT/NeMo, Realtime STT/vLLM Realtime) · 요약(Gemma 4) · 임베딩(Qwen3) · 번역(TranslateGemma) 워커 5개, 전체 소스:
+- duty cycle 기반 토폴로지: 실시간 대기 서비스만 always-on, sparse 워크로드는 scale-to-zero
+- ~80GB NeMo 이미지의 zero-rebuild 배포 (vLLM 서브프로세스 유지 + FastAPI 층만 재기동)
+- STT 마이크로배처(final 우선, partial backpressure), 계층 인증, INT4 Marlin 양자화 선택, Network Volume 캐시
 
-**Technologies**: vLLM, Serverless GPU, Docker/BuildKit, GitHub Actions, CUDA
+**Technologies**: vLLM, NVIDIA NeMo, RunPod Serverless/Pod, Docker/BuildKit, GitHub Actions, CUDA, FastAPI, WebSocket
 
 ### 9. [한국어 ASR — Parakeet 인코더 전이](./9-korean-asr-training/)
 사전학습 영어 encoder 이식 + 2단계 학습으로 한국어 CTC 모델:
 - stage 1 encoder freeze(decoder 만) → stage 2 full fine-tune
-- 한국어 SentencePiece BPE, 공개 코퍼스(Common Voice/FLEURS)
-- loanword 보존 eval 게이트
+- 한국어 SentencePiece BPE(4096), 공개 코퍼스(Common Voice 17 gated 직접 다운로드 / FLEURS)
+- 길이 버킷팅, 16-bit + grad accumulation, `strict=True` 인코더 이식 검증
 
-**Technologies**: NVIDIA NeMo, PyTorch Lightning, SentencePiece, CTC, transfer learning
+**Technologies**: NVIDIA NeMo, PyTorch Lightning, SentencePiece, CTC, transfer learning, huggingface_hub
 
-### 10. [회의 지식그래프 엔진](./10-meeting-knowledge-graph/)
-전사 스트림 → 사건 그래프 증분 빌드 (LLM + 결정론적 규칙):
-- LLM 은 좁은 분류/매칭만, 그래프 구조(the cut)는 규칙이 결정
-- 명시 단서에서만 인과 엣지(환각 방지), 토큰 겹침 prewhere 로 비용 상한
-- decision reversal(말 바꿈) 자동 감지
+### 10. [회의·업무 스트림 지식그래프 엔진](./10-meeting-knowledge-graph/)
+채팅/회의 스트림 → single-pass 사건 그래프 (v1 모놀리스 → v3 모듈 리팩터까지 전 이력):
+- LLM 은 분류(struct)와 단일 매칭(match)만, EXTEND/BIRTH/PARK 라우팅과 reclaim 은 코드가 결정
+- 명시 단서(why/ref hint)에서만 인과 엣지, bounded surface(이름 + 최근 3개)로 토큰 자석 방지
+- conflict 는 boolean 판정이 아니라 diff 랭커({reversal|refinement|unrelated, changed})
 
-**Technologies**: Python, LLM orchestration, 그래프 모델링, 결정론적 규칙 엔진
+**Technologies**: Python, Anthropic API, OpenAI 호환 self-hosted LLM, vis-network
 
 ### 11. [프로덕션 웹 플랫폼 & 백엔드](./11-web-platform/)
 Django + DRF + Celery + React, ECS/CloudFront 배포:
@@ -128,12 +129,42 @@ Django + DRF + Celery + React, ECS/CloudFront 배포:
 
 **Technologies**: Django, DRF, Celery, PostgreSQL, Redis, React/Vite, AWS ECS, CloudFront
 
+### 12. [프로덕션 ECS + CloudFront 인프라](./12-aws-ecs-fargate-cdn/)
+단일 CloudFront 진입점 뒤에 SPA(S3)와 API(ECS Fargate)를 함께 두는 Terraform:
+- dev/prod 를 같은 모듈로, WAFv2 · OAC · X-Origin-Verify 헤더로 경계 분리
+- Fargate Spot 기본, Secrets Manager valueFrom, OIDC 기반 GitHub Actions 배포
+
+**Technologies**: Terraform, AWS (CloudFront, ECS Fargate, ALB, RDS, ElastiCache, WAFv2), GitHub Actions OIDC
+
+### 13. [멀티 타깃 배포 파이프라인](./13-gitops-deploy-pipeline/)
+같은 제품 코드를 클라우드 인스턴스와 현장 엣지 디바이스로 내보내는 배포 레포:
+- 제품 repo release 태그 → `repository_dispatch` → NHN Cloud(OpenStack 계열) Terraform apply
+- 원격 tfstate(S3 호환) + concurrency 그룹, cloud-init 이 제품 repo 의 `deploy/setup.sh` 계약만 실행
+- 온프레미스: Nuitka onefile → `.deb`(BuildKit output) / Windows 컨테이너 + MinGW → `.exe`
+
+**Technologies**: Terraform (NHN Cloud provider), GitHub Actions, cloud-init, Docker BuildKit, Nuitka, dpkg
+
+### 14. [Basler GigE 멀티카메라 수집기](./14-multicam-gige-capture/)
+Jetson AGX Orin 에서 무인 장시간 녹화를 위한 수집기:
+- 시리얼 기준 카메라-설정 바인딩 (열거 순서 비의존), 노드맵 적용 후 재검증
+- 디스크 임계값 감시 → writer finalize 후 저장만 중단, GStreamer HW 인코딩(nvv4l2h264enc) 10분 세그먼트
+
+**Technologies**: Python, pypylon, OpenCV(GStreamer), Jetson, GigE Vision
+
+### 15. [산업용 선별기 비전 파이프라인](./15-industrial-sorting-vision/)
+컨베이어 위 제품의 정상/불량을 판정하는 엣지 비전의 전체 소스:
+- NanoDet-Plus 단일 스테이지 판정, 트랙별 MAX 집계 + `--min-hits` 로 오탐 억제 (mAP 0.69 / AP50 0.90)
+- NAS 에서 비디오 1개씩 복사-추출-삭제하는 재시작 안전 라벨링 추출기, 휠 포켓 ghost 정리 도구
+- GigE 실측: 스로틀 해제 81.3fps 드랍 0, 고정 버퍼 10분 소크 RSS 플랫, 타 대역 카메라 raw GVCP adoption
+
+**Technologies**: PyTorch, NanoDet, YOLO11, OpenCV, pypylon, Jetson, WSL2
+
 ---
 
 ## Technical Skills
 
 ### AI Product · Speech · LLMOps
-- **Real-time Speech**: 온디바이스/클라우드 하이브리드 STT, VAD, 채널 분리, 스트리밍 파이프라인 (Tauri/Rust, ONNX Runtime)
+- **Real-time Speech**: 스트리밍 STT(WebSocket f32 PCM), Silero VAD, RNNoise/R128 DSP, 채널 분리, partial/final 정합 (Tauri/Rust)
 - **Model Training**: transfer learning(encoder 이식), 2-stage freeze/fine-tune, SentencePiece, NeMo, PyTorch Lightning
 - **LLM Serving (vLLM)**: serverless GPU, always-on vs scale-to-zero 토폴로지, cold-start/비용 최적화, zero-rebuild 배포
 - **Applied LLM Systems**: LLM(좁은 판단) + 결정론적 규칙 하이브리드, 임베딩/RAG, 지식그래프
@@ -194,29 +225,10 @@ For inquiries about this portfolio or collaboration opportunities:
 
 ---
 
-## Additional Materials Available on Request
+## 📝 Note on the code
 
-This portfolio showcases production-ready code samples and architecture. Additional materials available upon request for serious inquiries:
+이 포트폴리오의 코드는 요약본이 아니라 실제 프로젝트 소스입니다. 공개를 위해 바꾼 것은 다음뿐입니다.
 
-### Available Documentation:
-- **Detailed AWS Architecture**: Complete dual-VPC Terraform configurations with security group implementations
-- **Production MLOps Pipelines**: Full ClearML pipeline code with Spot instance autoscaling
-- **Healthcare Integration**: FHIR R4 and PACS/DICOM client implementations
-- **Kubernetes Manifests**: Complete GitOps setup for MLOps infrastructure
-- **Python Package Source**: Full source code for 16+ production ML packages
-- **Architecture Decision Records (ADRs)**: Design decisions and trade-offs
-- **Performance Benchmarks**: Cost optimization results and metrics
-
-### How to Request:
-Please contact via email or LinkedIn with:
-1. Brief introduction of your organization
-2. Specific materials you're interested in
-3. Intended use case (hiring evaluation, collaboration, etc.)
-
-**Note**: Some implementations contain proprietary architectural patterns and are shared selectively to maintain competitive advantage while demonstrating technical capability.
-
----
-
-## 📝 License
-
-This portfolio contains anonymized and generalized versions of production code for demonstration purposes. All proprietary business logic has been removed or replaced with generic implementations.
+- 자격 증명, 계정·버킷·엔드포인트 식별자, 내부 호스트/NAS 경로, 장비 시리얼은 환경변수로 분리 (`.env.example` / `backend.hcl.example` 참고)
+- 고용주·고객·제품 도메인이 특정되는 이름은 범용 명칭으로 치환
+- 모델 가중치, 데이터셋, 녹화 영상, 빌드 산출물은 제외

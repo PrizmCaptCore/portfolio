@@ -1,6 +1,6 @@
 
 # Ignore local file
-potato_videos/
+item_videos/
 test_code/
 
 # Ignore environment secrets

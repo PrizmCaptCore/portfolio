@@ -1,0 +1,172 @@
+{
+    "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+    "productName": "Relay Assistant",
+    "version": "0.0.23",
+    "identifier": "com.relay.assistant",
+    "build": {
+        "frontendDist": "../out",
+        "devUrl": "http://localhost:3118",
+        "beforeDevCommand": "pnpm dev",
+        "beforeBuildCommand": "pnpm build"
+    },
+    "app": {
+        "windows": [
+            {
+                "title": "Relay Assistant",
+                "width": 1400,
+                "height": 900,
+                "resizable": true,
+                "fullscreen": false,
+                "theme": "Light",
+                "decorations": true
+            }
+        ],
+        "macOSPrivateApi": true,
+        "security": {
+            "csp": {
+                "default-src": "'self'",
+                "script-src": "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+                "style-src": "'self' 'unsafe-inline'",
+                "img-src": "'self' asset: https://asset.localhost data: blob: https://*.example.com https://*.amazonaws.com",
+                "media-src": "'self' blob: asset: https://asset.localhost",
+                "connect-src": "'self' ws://localhost:* http://localhost:* https://*.example.com wss://*.example.com"
+            },
+            "assetProtocol": {
+                "enable": true,
+                "scope": [
+                    "$APPDATA/**"
+                ]
+            },
+            "capabilities": [
+                {
+                    "identifier": "main",
+                    "description": "Main window capability with file system and media access",
+                    "windows": [
+                        "main",
+                        "meeting-alert"
+                    ],
+                    "permissions": [
+                        "fs:default",
+                        "fs:allow-read-file",
+                        "fs:read-all",
+                        "fs:write-all",
+                        "fs:allow-app-read",
+                        "fs:allow-app-write",
+                        "fs:allow-download-write",
+                        "fs:allow-download-read",
+                        "fs:scope-download",
+                        "core:path:default",
+                        "core:event:default",
+                        "core:window:default",
+                        "core:app:default",
+                        "core:resources:default",
+                        "core:menu:default",
+                        "core:tray:default",
+                        "core:webview:default",
+                        "core:webview:allow-create-webview-window",
+                        "core:window:allow-set-title",
+                        "core:window:allow-show",
+                        "core:window:allow-unminimize",
+                        "core:window:allow-set-focus",
+                        "core:window:allow-close",
+                        "core:window:allow-primary-monitor",
+                        "store:default",
+                        "notification:default",
+                        "notification:allow-is-permission-granted",
+                        "process:default",
+                        "http:default",
+                        "clipboard-manager:default",
+                        "clipboard-manager:allow-write-text",
+                        "clipboard-manager:allow-read-text",
+                        "updater:default",
+                        {
+                            "identifier": "opener:allow-open-url",
+                            "allow": [
+                                {
+                                    "url": "https://example.com/*"
+                                },
+                                {
+                                    "url": "https://*.example.com/*"
+                                },
+                                {
+                                    "url": "https://example.com/*"
+                                },
+                                {
+                                    "url": "https://*.example.com/*"
+                                }
+                            ]
+                        },
+                        {
+                            "identifier": "http:allow-fetch",
+                            "allow": [
+                                {
+                                    "url": "https://*.example.com/**"
+                                },
+                                {
+                                    "url": "https://discord.com/api/webhooks/**"
+                                },
+                                {
+                                    "url": "https://discordapp.com/api/webhooks/**"
+                                },
+                                {
+                                    "url": "https://canary.discord.com/api/webhooks/**"
+                                },
+                                {
+                                    "url": "https://ptb.discord.com/api/webhooks/**"
+                                }
+                            ]
+                        },
+                        {
+                            "identifier": "fs:scope",
+                            "allow": [
+                                {
+                                    "path": "$APPDATA/*"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": [
+            "deb",
+            "appimage",
+            "msi",
+            "nsis",
+            "app",
+            "dmg"
+        ],
+        "createUpdaterArtifacts": true,
+        "icon": [
+            "icons/icon.png",
+            "icons/icon.icns",
+            "icons/icon.ico"
+        ],
+        "resources": [
+            "templates/*.json"
+        ],
+        "externalBin": [
+            "binaries/ffmpeg"
+        ],
+        "macOS": {
+            "bundleName": "Relay Assistant",
+            "entitlements": "entitlements.plist",
+            "signingIdentity": "-",
+            "hardenedRuntime": true
+        },
+        "windows": {
+            "signCommand": "powershell -ExecutionPolicy Bypass -File scripts/sign-windows.ps1 -FilePath %1"
+        }
+    },
+    "plugins": {
+        "updater": {
+            "endpoints": [
+                "https://api.example.com/api/v1/updates/check/?platform={{target}}-{{arch}}&current_version={{current_version}}"
+            ],
+            "pubkey": "<TAURI_UPDATER_PUBKEY>"
+        }
+    }
+}
