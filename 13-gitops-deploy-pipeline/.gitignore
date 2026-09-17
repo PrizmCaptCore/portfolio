@@ -1,0 +1,10 @@
+.env
+env/.env
+backend.hcl
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+out/
+*.build/

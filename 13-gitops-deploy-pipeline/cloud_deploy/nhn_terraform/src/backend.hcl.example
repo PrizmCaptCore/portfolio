@@ -1,0 +1,5 @@
+# 로컬 실행용 partial backend 설정. 복사해서 사용:
+#   cp backend.hcl.example backend.hcl
+#   terraform init -backend-config=backend.hcl
+# (backend.hcl 은 .gitignore 대상)
+bucket = "<your-tfstate-bucket>"

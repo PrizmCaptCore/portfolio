@@ -1,0 +1,38 @@
+# [예시 파일] 배포 대상 "제품 repo" 쪽에 두는 발신 워크플로우입니다.
+# 이 레포가 아니라, 배포할 각 private repo의 .github/workflows/ 아래에 복사해서 사용하세요.
+#
+# 동작: main 머지 후 release가 발행(태그 생성)되면 배포 레포로
+#       repository_dispatch 이벤트를 보내 NHN Cloud 배포를 시작시킵니다.
+#
+# 제품 repo에 등록할 Secret:
+#   DEPLOY_TRIGGER_TOKEN - 배포 레포에 dispatch를 보낼 수 있는 fine-grained PAT
+#                          (대상: deploy 레포, 권한: Contents Read and write)
+
+name: Trigger NHN Cloud Deploy
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify-deploy-repo:
+    runs-on: ubuntu-latest
+    # main 브랜치 기준으로 딴 release만 배포 트리거로 인정합니다.
+    # (target_commitish가 커밋 SHA로 들어오는 예외 케이스가 있다면 이 조건을 조정하세요)
+    if: ${{ github.event.release.target_commitish == 'main' }}
+    steps:
+      - name: Send repository_dispatch to deploy repo
+        env:
+          DEPLOY_REPO: your-org/deploy-repo   # 이 배포 레포의 owner/repo
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${{ secrets.DEPLOY_TRIGGER_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${DEPLOY_REPO}/dispatches" \
+            -d '{
+              "event_type": "deploy-nhn",
+              "client_payload": {
+                "repo": "${{ github.repository }}",
+                "tag": "${{ github.event.release.tag_name }}"
+              }
+            }'

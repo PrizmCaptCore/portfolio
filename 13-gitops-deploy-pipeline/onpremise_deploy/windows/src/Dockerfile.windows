@@ -1,0 +1,32 @@
+# escape=`
+
+# Build a Windows exe with Nuitka inside a Windows container.
+# REQUIREMENTS:
+#   - Windows Pro/Enterprise/Education host (Windows containers need the Hyper-V/Containers features)
+#   - Docker Desktop switched to Windows containers mode (tray icon -> "Switch to Windows containers...")
+# HOW TO USE: .\build.ps1   (see build.ps1; do not run this with build.sh)
+# NOTE: if this base tag fails to pull, try 3.13-windowsservercore-ltsc2022 or -ltsc2025.
+
+FROM python:3.14-windowsservercore-ltsc2022 AS build
+
+RUN pip install --no-cache-dir --upgrade pip `
+    && pip install --no-cache-dir uv nuitka
+
+WORKDIR C:\app\product
+
+COPY product/requirements.txt* product/pyproject.toml* product/uv.lock* ./
+RUN if exist requirements.txt uv pip install --system --no-cache-dir -r requirements.txt
+RUN if exist pyproject.toml uv sync --frozen --no-dev
+
+COPY product ./
+
+ARG APP_ENTRY=hello.py
+ARG BIN_NAME=hello
+
+# --mingw64: the container has no MSVC, so let Nuitka download a MinGW-w64 toolchain
+RUN python -m nuitka --standalone --onefile `
+    --assume-yes-for-downloads --mingw64 `
+    --output-dir=C:\dist --output-filename=%BIN_NAME%.exe %APP_ENTRY%
+
+# collect only the exe so build.ps1 can docker-cp a clean directory
+RUN mkdir C:\artifact && copy C:\dist\%BIN_NAME%.exe C:\artifact\

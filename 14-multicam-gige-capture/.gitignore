@@ -1,0 +1,25 @@
+
+# Ignore local file
+potato_videos/
+test_code/
+
+# Ignore environment secrets
+.env
+
+#pycache
+*.pyc
+
+#vscode
+.vscode/
+
+#env
+.env
+
+# 대용량 아카이브 (실수 커밋 방지)
+*.zip
+
+# 현장별 설정
+.env
+
+# 현장별 설정
+.env

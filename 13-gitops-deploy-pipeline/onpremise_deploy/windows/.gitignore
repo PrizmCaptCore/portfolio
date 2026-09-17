@@ -1,0 +1,13 @@
+# Ignore build artifacts
+src/out/*.deb
+src/product/*.build
+src/product/*.build/*.o
+src/product/*.build/*.pyd
+src/product/*.build/*.so
+src/product/*.build/*.pyo
+src/product/*.build/*.pyc
+
+# Personal environment files
+*.env
+# keep the template, ignore the real one
+!env/.env.example
