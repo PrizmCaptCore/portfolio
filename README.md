@@ -233,10 +233,4 @@ For inquiries about this portfolio or collaboration opportunities:
 
 ---
 
-## 📝 Note on the code
-
-이 포트폴리오의 코드는 요약본이 아니라 실제 프로젝트 소스입니다. 공개를 위해 바꾼 것은 다음뿐입니다.
-
-- 자격 증명, 계정·버킷·엔드포인트 식별자, 내부 호스트/NAS 경로, 장비 시리얼은 환경변수로 분리 (`.env.example` / `backend.hcl.example` 참고)
-- 고용주·고객·제품 도메인이 특정되는 이름은 범용 명칭으로 치환
-- 모델 가중치, 데이터셋, 녹화 영상, 빌드 산출물은 제외
+## 📝 Note on the
