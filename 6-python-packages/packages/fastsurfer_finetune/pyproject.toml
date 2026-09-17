@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastsurfer-finetune"
+version = "0.3.0"
+description = "Compare FastSurfer against FreeSurfer recon-all, pick disagreeing cases, fine-tune FastSurferCNN"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.23.0",
+    "nibabel>=5.0.0",
+    "pandas>=2.0.0",
+    "torch>=2.0.0",
+    "pyyaml>=6.0",
+    "scipy>=1.10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0", "black", "mypy"]
+
+[project.scripts]
+fsf-compare = "fastsurfer_finetune.cli:compare_main"
+fsf-select = "fastsurfer_finetune.cli:select_main"
+fsf-finetune = "fastsurfer_finetune.cli:finetune_main"
+fsf-evaluate = "fastsurfer_finetune.cli:evaluate_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

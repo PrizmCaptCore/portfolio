@@ -6,6 +6,7 @@ pythonpath = [
     "packages/ml_inference/src",
     "packages/dicom_processor/src",
     "packages/fhir_client/src",
+    "packages/fastsurfer_finetune/src",
 ]
 
 [tool.black]

@@ -25,11 +25,18 @@ Developed 16+ Python packages in a monorepo structure for:
 │   │   └── src/dicom_processor/
 │   │       ├── __init__.py
 │   │       └── preprocessor.py
-│   └── fhir_client/           # FHIR R4 API client
+│   ├── fhir_client/           # FHIR R4 API client
+│   │   ├── pyproject.toml
+│   │   └── src/fhir_client/
+│   │       ├── __init__.py
+│   │       └── client.py
+│   └── fastsurfer_finetune/   # FastSurfer vs FreeSurfer 비교 → 선별 → FastSurferCNN 파인튜닝 (재구성 스케치)
+│       ├── README.md
 │       ├── pyproject.toml
-│       └── src/fhir_client/
-│           ├── __init__.py
-│           └── client.py
+│       └── src/fastsurfer_finetune/
+│           ├── labels.py, compare.py, select.py
+│           ├── dataset.py, finetune.py, evaluate.py
+│           └── cli.py
 ├── pyproject.toml             # Root config (pytest, black, mypy)
 └── .pre-commit-config.yaml    # Code quality hooks
 ```
@@ -54,7 +61,21 @@ Medical image preprocessing pipeline:
 
 **Key file**: [preprocessor.py](packages/dicom_processor/src/dicom_processor/preprocessor.py)
 
-### 3. FHIR Client (`fhir_client`)
+### 3. FastSurfer Fine-tune (`fastsurfer_finetune`) — 재구성 스케치
+FastSurfer 출력을 FreeSurfer recon-all 출력과 구조별 Dice · 부피차 · HD95 로 비교하고, 불일치 케이스만
+QC 게이트를 거쳐 라벨로 삼아 FastSurferCNN 을 plane 별로 파인튜닝한 파이프라인:
+- 피질 라벨은 채점에서 제외 (surface 기반 FreeSurfer 피질은 볼륨 CNN 이 못 맞추는 것이 정상)
+- 테스트 셋을 먼저 사이트별 층화로 분리, hard + easy(드리프트 방지) 혼합 학습
+- encoder freeze → 전체 unfreeze 2단계, CombinedLoss(가중 CE + Dice), subcortical Dice 기준 조기 종료
+- `run_prediction.py` 호환 체크포인트로 저장해 3-plane soft voting 결과를 before/after 로 재채점
+
+원본 소스는 남아 있지 않아 FastSurfer 공개 레포 인터페이스 기준으로 재구성했습니다.
+
+**Key files**: [compare.py](packages/fastsurfer_finetune/src/fastsurfer_finetune/compare.py),
+[select.py](packages/fastsurfer_finetune/src/fastsurfer_finetune/select.py),
+[finetune.py](packages/fastsurfer_finetune/src/fastsurfer_finetune/finetune.py)
+
+### 4. FHIR Client (`fhir_client`)
 Healthcare data integration with FHIR R4:
 - Async/await for non-blocking I/O
 - GCP Healthcare API integration

@@ -78,8 +78,9 @@ Production-ready Python packages for ML workflows:
 - Data processing and validation
 - ML inference SDKs
 - Report generation utilities
+- FastSurfer ↔ FreeSurfer 비교·선별·파인튜닝 파이프라인 (`fastsurfer_finetune`, 재구성 스케치)
 
-**Technologies**: Python, setuptools, pyproject.toml, pytest
+**Technologies**: Python, setuptools, pyproject.toml, pytest, FastSurfer/FreeSurfer, nibabel, PyTorch
 
 ---
 
