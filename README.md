@@ -227,7 +227,7 @@ Jetson AGX Orin 에서 무인 장시간 녹화를 위한 수집기:
 
 For inquiries about this portfolio or collaboration opportunities:
 
-- **LinkedIn**: [linkedin.com/in/jomin-kim-643870126](https://www.linkedin.com/in/jomin-kim-643870126)
+- **LinkedIn**: [linkedin](https://www.linkedin.com/in/jomin-kim-a8aa80427/)
 - **GitHub**: [@PrizmCaptCore](https://github.com/PrizmCaptCore)
 - **Email**: lumia82015@live.com · jomin96@gmail.com · 21ghzx86@naver.com
 
