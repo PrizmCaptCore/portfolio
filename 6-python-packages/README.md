@@ -34,7 +34,7 @@ Developed 16+ Python packages in a monorepo structure for:
 │       ├── README.md
 │       ├── pyproject.toml
 │       └── src/fastsurfer_finetune/
-│           ├── labels.py, compare.py, select.py
+│           ├── labels.py, preprocess.py, compare.py, select.py
 │           ├── dataset.py, finetune.py, evaluate.py
 │           └── cli.py
 ├── pyproject.toml             # Root config (pytest, black, mypy)
@@ -62,14 +62,16 @@ Medical image preprocessing pipeline:
 **Key file**: [preprocessor.py](packages/dicom_processor/src/dicom_processor/preprocessor.py)
 
 ### 3. FastSurfer Fine-tune (`fastsurfer_finetune`) — 재구성 스케치
-FastSurfer 출력을 FreeSurfer recon-all 출력과 구조별 Dice · 부피차 · HD95 로 비교하고, 불일치 케이스만
-QC 게이트를 거쳐 라벨로 삼아 FastSurferCNN 을 plane 별로 파인튜닝한 파이프라인:
+FastSurfer v1 출력을 FreeSurfer recon-all 출력과 구조별 Dice · 부피차 · HD95 로 비교하고, 불일치 케이스만
+QC 게이트를 거쳐 라벨로 삼아 FastSurferCNN 을 plane 별로 파인튜닝한 파이프라인
+(기준: `feature/one-shot-bias-field` 브랜치):
+- 브랜치의 one-shot bias field 보정(CNN 세그를 조직 prior 로 DCT 필드 1회 적합)을 학습 입력 전처리로 재사용
 - 피질 라벨은 채점에서 제외 (surface 기반 FreeSurfer 피질은 볼륨 CNN 이 못 맞추는 것이 정상)
 - 테스트 셋을 먼저 사이트별 층화로 분리, hard + easy(드리프트 방지) 혼합 학습
-- encoder freeze → 전체 unfreeze 2단계, CombinedLoss(가중 CE + Dice), subcortical Dice 기준 조기 종료
-- `run_prediction.py` 호환 체크포인트로 저장해 3-plane soft voting 결과를 before/after 로 재채점
+- v1 `generate_hdf5` 로 HDF5 생성, `Epoch_30` 체크포인트에서 encoder freeze → 전체 unfreeze, `CombinedLoss`, subcortical Dice 조기 종료
+- `Solver` 와 같은 키로 저장해 v1 `eval.py` 의 3-plane view aggregation 결과를 before/after 로 재채점
 
-원본 소스는 남아 있지 않아 FastSurfer 공개 레포 인터페이스 기준으로 재구성했습니다.
+원본 소스는 남아 있지 않아 FastSurfer 공개 레포(v1.1.x 브랜치) 인터페이스 기준으로 재구성했습니다.
 
 **Key files**: [compare.py](packages/fastsurfer_finetune/src/fastsurfer_finetune/compare.py),
 [select.py](packages/fastsurfer_finetune/src/fastsurfer_finetune/select.py),

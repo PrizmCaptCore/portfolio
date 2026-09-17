@@ -1,11 +1,12 @@
-"""Step 4: run the fine-tuned checkpoints through FastSurfer's own inference and re-score against FreeSurfer.
+"""Step 4: run the fine-tuned checkpoints through FastSurfer v1's own eval.py and re-score against FreeSurfer.
 
-We do not evaluate on slices. The product is a 3D segmentation produced by FastSurfer's run_prediction.py,
-which aggregates the three plane models by soft voting -- so that is what gets scored, with exactly the same
-compare.py metrics as step 1. The report is a before/after table on the held-out test split: per structure
-mean Dice and HD95 for the stock checkpoints vs. the fine-tuned ones, plus the count of subjects that
-crossed the "hard" thresholds in each direction. A fine-tune that improves hippocampus but regresses
-ventricles on the easy subjects fails review; both columns have to move the right way.
+We do not evaluate on slices. The product is a 3D segmentation produced by FastSurferCNN/eval.py, which
+runs the three plane networks and aggregates them by view aggregation (soft voting, sagittal mapped back to
+the lateralised label space) -- so that is what gets scored, with exactly the same compare.py metrics as
+step 1. The report is a before/after table on the held-out test split: per structure mean Dice and HD95 for
+the stock Epoch_30 checkpoints vs. the fine-tuned ones, plus how many subjects crossed the "hard" thresholds
+in each direction. A fine-tune that improves hippocampus but regresses ventricles on the easy subjects fails
+review; both columns have to move the right way.
 """
 from __future__ import annotations
 
@@ -20,20 +21,27 @@ from .labels import fastsurfer_home
 
 
 def run_fastsurfer(subjects: List[str], t1_dir: str, out_dir: str, ckpts: Dict[str, str],
-                   device: str = "cuda") -> None:
-    """Segmentation-only FastSurfer run with our checkpoints. One call per subject; sequential is fine here."""
+                   in_name: str = os.path.join("mri", "orig_nu.mgz"), use_cuda: bool = True) -> None:
+    """Segmentation-only run with our checkpoints via v1's eval.py (one subject per call, --t <sid>).
+
+    in_name must match what the networks were fine-tuned on (orig_nu.mgz after preprocess.py, or orig.mgz).
+    Output lands at <out_dir>/<sid>/mri/aparc.DKTatlas+aseg.deep.mgz so compare.py finds it unchanged.
+    """
     home = fastsurfer_home()
     for s in subjects:
         cmd = [
-            "python", os.path.join(home, "FastSurferCNN", "run_prediction.py"),
-            "--t1", os.path.join(t1_dir, s, "mri", "orig.mgz"),
-            "--sid", s, "--sd", out_dir,
-            "--seg_log", os.path.join(out_dir, s, "seg.log"),
-            "--device", device,
+            "python", os.path.join(home, "FastSurferCNN", "eval.py"),
+            "--i_dir", t1_dir, "--o_dir", out_dir, "--t", s,
+            "--in_name", in_name,
+            "--out_name", os.path.join("mri", "aparc.DKTatlas+aseg.deep.mgz"),
+            "--network_axial_path", ckpts["axial"],
+            "--network_coronal_path", ckpts["coronal"],
+            "--network_sagittal_path", ckpts["sagittal"],
+            "--batch_size", "8",
         ]
-        for plane, path in ckpts.items():          # axial / coronal / sagittal
-            cmd += [f"--ckpt_{plane[:3]}", path]
-        subprocess.run(cmd, check=True)
+        if not use_cuda:
+            cmd.append("--no_cuda")
+        subprocess.run(cmd, check=True, cwd=os.path.join(home, "FastSurferCNN"))
 
 
 def before_after(subjects: List[str], stock_dir: str, tuned_dir: str, freesurfer_dir: str) -> pd.DataFrame:

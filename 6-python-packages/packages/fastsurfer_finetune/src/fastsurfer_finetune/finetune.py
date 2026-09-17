@@ -1,98 +1,76 @@
-"""Step 3b: fine-tune one FastSurferCNN plane model from the released checkpoint.
+"""Step 3b: fine-tune one FastSurferCNN v1 plane network from the released Epoch_30 checkpoint.
 
-Why fine-tune instead of retrain: the released checkpoints were trained on ~140 subjects across several
-public cohorts; our disagreement set is a few dozen subjects from scanners those cohorts under-represent.
-Retraining from scratch on that would overfit; fine-tuning with a small LR and the encoder frozen for the
-first epochs moves only the decision boundary. Concretely:
+Why fine-tune instead of retrain: the released weights come from ~140 subjects across public cohorts; our
+disagreement set is a few dozen subjects from scanners those cohorts under-represent. Retraining from
+scratch on that would overfit; fine-tuning with a small LR and the encoder frozen for the first epochs
+moves only the decision boundary. Concretely, in v1 terms:
 
-  * start from the plane checkpoint (checkpoints/aparc_vinn_{plane}_v2.0.0.pkl)
-  * phase 1 (freeze_epochs): encoder frozen, decoder + classifier at lr
-  * phase 2: everything unfrozen at lr / 5
-  * loss = FastSurfer's CombinedLoss (weighted CE + Dice) using the per-slice weight masks from dataset.py
-  * early stop on val mean Dice of the subcortical classes, not on loss -- loss keeps falling on white matter
-    long after the small structures stop improving
-  * save in the same dict layout FastSurfer loads (model_state, plane, ...) so run_prediction.py can take
-    --ckpt_{plane} pointing at the result with no code change
+  * model = FastSurferCNN(params_network) with the stock params (64 filters, 5x5 kernels, 7 channels)
+  * weights from checkpoints/{Plane}_Weights_FastSurferCNN/ckpts/Epoch_30_training_state.pkl
+    ("model_state_dict", possibly with a "module." DataParallel prefix -- handled like eval.py does)
+  * phase 1 (freeze_epochs): encode1..4 + bottleneck frozen, decoders + classifier at lr
+  * phase 2: everything at lr / 5
+  * data = AsegDatasetWithAugmentation over our HDF5, with train.py's augmentations (pad 8 + random crop)
+  * loss = CombinedLoss (weighted CE + Dice), returns (total, dice, ce) like Solver uses it
+  * early stop on val mean Dice of the subcortical classes, not on loss -- loss keeps falling on white
+    matter long after the small structures stop improving
+  * checkpoint saved as Epoch_NN_training_state.pkl with the same keys Solver writes, so eval.py can take
+    --network_{plane}_path pointing at it with no code change
+
+v1 has no config system; everything is a dict, mirrored here in FinetuneConfig.
 """
 from __future__ import annotations
 
 import os
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-import h5py
 import numpy as np
 import torch
 import yaml
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
+from torchvision import transforms
 
-from .labels import fastsurfer_home
+from .labels import fastsurfer_home, num_classes, subcortical_class_indices
 
 
 @dataclass
 class FinetuneConfig:
     plane: str = "coronal"
-    ckpt_in: str = "checkpoints/aparc_vinn_coronal_v2.0.0.pkl"
-    ckpt_out: str = "runs/finetune/coronal_best.pkl"
-    cfg_yaml: str = "FastSurferCNN/config/FastSurferVINN.yaml"
+    ckpt_in: str = "checkpoints/Coronal_Weights_FastSurferCNN/ckpts/Epoch_30_training_state.pkl"
+    out_dir: str = "runs/finetune/coronal"
     epochs: int = 12
     freeze_epochs: int = 3
-    lr: float = 1e-4
+    lr: float = 1e-4            # stock training used 1e-2 from scratch; two orders lower for fine-tuning
     batch_size: int = 16
-    num_workers: int = 4
-    amp: bool = True
-    seed: int = 0
+    num_filters: int = 64
+    kernel: int = 5
+    seed: int = 1
 
 
-class SliceH5(Dataset):
-    def __init__(self, path: str):
-        self.path, self._f = path, None
-        with h5py.File(path, "r") as f:
-            self.n = f["orig_dataset"].shape[0]
-
-    def __len__(self) -> int:
-        return self.n
-
-    def __getitem__(self, i: int):
-        if self._f is None:  # open lazily so DataLoader workers each get their own handle
-            self._f = h5py.File(self.path, "r")
-        img = torch.from_numpy(self._f["orig_dataset"][i]).permute(2, 0, 1).float() / 255.0  # (7,H,W)
-        lab = torch.from_numpy(self._f["aseg_dataset"][i].astype(np.int64))
-        w = torch.from_numpy(self._f["weight_dataset"][i])
-        return {"image": img, "label": lab, "weight": w}
+def network_params(cfg: FinetuneConfig) -> Dict[str, int]:
+    """Exactly the dict train.py / eval.py build; sub_module.py reads these keys."""
+    return {"num_channels": 7, "num_filters": cfg.num_filters,
+            "kernel_h": cfg.kernel, "kernel_w": cfg.kernel, "stride_conv": 1,
+            "pool": 2, "stride_pool": 2, "num_classes": num_classes(cfg.plane),
+            "kernel_c": 1, "kernel_d": 1, "batch_size": cfg.batch_size, "height": 256, "width": 256}
 
 
-def build_model(cfg_yaml: str, plane: str, device: torch.device):
-    fastsurfer_home()
-    from FastSurferCNN.models.networks import build_model as fs_build  # type: ignore
-    from FastSurferCNN.config.defaults import get_cfg_defaults  # type: ignore
-
-    cfg = get_cfg_defaults()
-    cfg.merge_from_file(cfg_yaml)
-    cfg.DATA.PLANE = plane
-    cfg.MODEL.NUM_CLASSES = 51 if plane == "sagittal" else 79
-    return fs_build(cfg).to(device), cfg
-
-
-def load_checkpoint(model: torch.nn.Module, path: str, device: torch.device) -> None:
-    state = torch.load(path, map_location=device)
-    state = state.get("model_state", state)
-    missing, unexpected = model.load_state_dict(state, strict=False)
-    if unexpected:
-        raise RuntimeError(f"checkpoint has keys the model does not: {unexpected[:5]}")
-    if missing:
-        print(f"[warn] {len(missing)} keys not in checkpoint (fresh init): {missing[:3]}")
+def load_v1_checkpoint(model: torch.nn.Module, path: str, device: torch.device) -> None:
+    state = torch.load(path, map_location=device)["model_state_dict"]
+    fixed = OrderedDict((k[7:] if k.startswith("module.") else k, v) for k, v in state.items())
+    model.load_state_dict(fixed, strict=True)  # a mismatch means wrong plane / class count; fail loudly
 
 
 def set_encoder_frozen(model: torch.nn.Module, frozen: bool) -> None:
-    # FastSurferVINN names: encode1..encode4 + bottleneck are the encoder; decode*/classifier are trained.
     for name, p in model.named_parameters():
-        if name.startswith(("encode", "bottleneck", "inp_block")):
+        if name.startswith(("encode1", "encode2", "encode3", "encode4", "bottleneck")):
             p.requires_grad = not frozen
 
 
-def subcortical_dice(pred: torch.Tensor, lab: torch.Tensor, classes: range) -> float:
+def mean_dice(pred: torch.Tensor, lab: torch.Tensor, classes) -> float:
     ds = []
     for c in classes:
         a, b = pred == c, lab == c
@@ -103,57 +81,68 @@ def subcortical_dice(pred: torch.Tensor, lab: torch.Tensor, classes: range) -> f
 
 
 def run(cfg: FinetuneConfig, train_h5: str, val_h5: str) -> Dict[str, float]:
+    fastsurfer_home()
+    from data_loader.augmentation import AugmentationPadImage, AugmentationRandomCrop, ToTensor  # type: ignore
+    from data_loader.load_neuroimaging_data import AsegDatasetWithAugmentation  # type: ignore
+    from models.losses import CombinedLoss  # type: ignore
+    from models.networks import FastSurferCNN  # type: ignore
+
     torch.manual_seed(cfg.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, fs_cfg = build_model(cfg.cfg_yaml, cfg.plane, device)
-    load_checkpoint(model, cfg.ckpt_in, device)
+    model = FastSurferCNN(network_params(cfg)).to(device)
+    load_v1_checkpoint(model, cfg.ckpt_in, device)
+    criterion = CombinedLoss()
 
-    from FastSurferCNN.models.losses import get_loss_func  # type: ignore
-    fs_cfg.MODEL.LOSS_FUNC = "combined"  # weighted CE + Dice
-    criterion = get_loss_func(fs_cfg)
+    tf_train = transforms.Compose([AugmentationPadImage(pad_size=8),
+                                   AugmentationRandomCrop(output_size=(256, 256)), ToTensor()])
+    tf_val = transforms.Compose([ToTensor()])
+    train_dl = DataLoader(AsegDatasetWithAugmentation({"dataset_name": train_h5, "plane": cfg.plane}, tf_train),
+                          batch_size=cfg.batch_size, shuffle=True, drop_last=True)
+    val_dl = DataLoader(AsegDatasetWithAugmentation({"dataset_name": val_h5, "plane": cfg.plane}, tf_val),
+                        batch_size=cfg.batch_size)
 
-    train_dl = DataLoader(SliceH5(train_h5), batch_size=cfg.batch_size, shuffle=True,
-                          num_workers=cfg.num_workers, pin_memory=True, drop_last=True)
-    val_dl = DataLoader(SliceH5(val_h5), batch_size=cfg.batch_size, num_workers=cfg.num_workers)
-
-    scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp and device.type == "cuda")
-    subcort = range(1, 34)  # compact class indices of the aseg (non-cortical) labels in FastSurfer's order
+    subcort = subcortical_class_indices(cfg.plane)
+    os.makedirs(cfg.out_dir, exist_ok=True)
     best, history = -1.0, {}
     for epoch in range(cfg.epochs):
         frozen = epoch < cfg.freeze_epochs
         set_encoder_frozen(model, frozen)
         lr = cfg.lr if frozen else cfg.lr / 5
-        opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr, weight_decay=1e-4)
+        # same optimizer family/args as train.py's adam branch, restricted to trainable params
+        opt = torch.optim.Adam([p for p in model.parameters() if p.requires_grad],
+                               lr=lr, betas=(0.9, 0.999), eps=1e-8, weight_decay=1e-4)
 
         model.train()
         t0, run_loss = time.time(), 0.0
         for batch in train_dl:
-            img, lab, w = (batch[k].to(device, non_blocking=True) for k in ("image", "label", "weight"))
-            with torch.autocast(device_type=device.type, enabled=scaler.is_enabled()):
-                logits = model(img)
-                loss, _, _ = criterion(logits, lab, w)
-            opt.zero_grad(set_to_none=True)
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
+            img = batch["image"].to(device)
+            lab = batch["label"].to(device)
+            w = batch["weight"].to(device).float()
+            loss, _dice, _ce = criterion(model(img), lab, w)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
             run_loss += loss.item()
 
         model.eval()
         dices = []
         with torch.no_grad():
             for batch in val_dl:
-                img, lab = batch["image"].to(device), batch["label"].to(device)
-                dices.append(subcortical_dice(model(img).argmax(1), lab, subcort))
+                pred = model(batch["image"].to(device)).argmax(1)
+                dices.append(mean_dice(pred, batch["label"].to(device), subcort))
         val_dice = float(np.mean(dices))
         history[f"epoch{epoch}"] = val_dice
         print(f"epoch {epoch:02d} {'frozen' if frozen else 'full  '} lr={lr:.1e} "
-              f"loss={run_loss / len(train_dl):.4f} val_subcort_dice={val_dice:.4f} ({time.time() - t0:.0f}s)")
+              f"loss={run_loss / max(1, len(train_dl)):.4f} val_subcort_dice={val_dice:.4f} ({time.time() - t0:.0f}s)")
 
         if val_dice > best:
             best = val_dice
-            os.makedirs(os.path.dirname(cfg.ckpt_out) or ".", exist_ok=True)
-            torch.save({"model_state": model.state_dict(), "plane": cfg.plane, "epoch": epoch,
-                        "val_subcortical_dice": best, "finetuned_from": cfg.ckpt_in}, cfg.ckpt_out)
+            # Solver's layout: eval.py reads "model_state_dict"; keep the Epoch_NN name so tooling that globs it works
+            torch.save({"model_state_dict": model.state_dict(), "optimizer_state_dict": opt.state_dict(),
+                        "epoch": epoch, "plane": cfg.plane, "val_subcortical_dice": best,
+                        "finetuned_from": cfg.ckpt_in},
+                       os.path.join(cfg.out_dir, f"Epoch_{epoch:02d}_training_state.pkl"))
+            torch.save({"model_state_dict": model.state_dict()}, os.path.join(cfg.out_dir, "best_training_state.pkl"))
     history["best"] = best
     return history
 

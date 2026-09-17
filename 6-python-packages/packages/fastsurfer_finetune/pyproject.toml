@@ -5,21 +5,24 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fastsurfer-finetune"
 version = "0.3.0"
-description = "Compare FastSurfer against FreeSurfer recon-all, pick disagreeing cases, fine-tune FastSurferCNN"
+description = "Compare FastSurfer v1 against FreeSurfer recon-all, pick disagreeing cases, fine-tune FastSurferCNN (one-shot bias field branch)"
 requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.23.0",
-    "nibabel>=5.0.0",
-    "pandas>=2.0.0",
-    "torch>=2.0.0",
+    "nibabel>=3.2.0",
+    "pandas>=1.5.0",
+    "torch>=1.8.0",
+    "torchvision>=0.9.0",
+    "h5py>=3.0.0",
     "pyyaml>=6.0",
-    "scipy>=1.10.0",
+    "scipy>=1.7.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0.0", "black", "mypy"]
 
 [project.scripts]
+fsf-preprocess = "fastsurfer_finetune.cli:preprocess_main"
 fsf-compare = "fastsurfer_finetune.cli:compare_main"
 fsf-select = "fastsurfer_finetune.cli:select_main"
 fsf-finetune = "fastsurfer_finetune.cli:finetune_main"
