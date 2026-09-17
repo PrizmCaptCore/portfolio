@@ -232,5 +232,3 @@ For inquiries about this portfolio or collaboration opportunities:
 - **Email**: lumia82015@live.com · jomin96@gmail.com · 21ghzx86@naver.com
 
 ---
-
-## 📝 Note on the
