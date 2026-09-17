@@ -159,6 +159,14 @@ Jetson AGX Orin 에서 무인 장시간 녹화를 위한 수집기:
 
 **Technologies**: PyTorch, NanoDet, YOLO11, OpenCV, pypylon, Jetson, WSL2
 
+### 16. [회의 요약·인텐트 LLM 파인튜닝](./16-llm-finetune-unsloth/)
+8번 서빙 워커의 요약/인텐트 모델을 만든 unsloth LoRA SFT 파이프라인 (원본 유실, 재구성 스케치):
+- 체크포인트형 라벨(회의록-so-far → JSON) 데이터셋, 스키마 게이트·meeting 단위 split
+- 4-bit 로드 + LoRA r=16, completion-only loss, merged 16-bit 로 vLLM 호환 export
+- 계약 평가: JSON 유효율·스키마 적합률·인텐트 정확도·라틴 용어 보존율을 릴리스 게이트로
+
+**Technologies**: unsloth, TRL, PEFT/LoRA, bitsandbytes, Gemma, vLLM
+
 ---
 
 ## Technical Skills
